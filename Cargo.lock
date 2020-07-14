@@ -12,7 +12,7 @@ dependencies = [
 [[package]]
 name = "base_conversion"
 version = "0.4.0"
-source = "git+https://github.com/GaloisInc/swanky#954b615363e1bf5823a297250573b8bad00f8970"
+source = "git+https://github.com/GaloisInc/swanky#27c2a3888342822c172805dfd0fb4f8ae6cb00a6"
 dependencies = [
  "cc",
 ]
@@ -52,9 +52,9 @@ checksum = "08c48aae112d48ed9f069b33538ea9e3e90aa263cfa3d1c24309612b1f7472de"
 
 [[package]]
 name = "cc"
-version = "1.0.55"
+version = "1.0.58"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b1be3409f94d7bdceeb5f5fac551039d9b3f00e25da7a74fc4d33400a0d96368"
+checksum = "f9a06fb2e53271d7c279ec1efea6ab691c35a2ae67ec0d91d7acec0caf13b518"
 
 [[package]]
 name = "cfg-if"
@@ -99,7 +99,7 @@ checksum = "e88a8acf291dafb59c2d96e8f59828f3838bb1a70398823ade51a84de6a6deed"
 [[package]]
 name = "fancy-garbling"
 version = "0.4.0"
-source = "git+https://github.com/GaloisInc/swanky#954b615363e1bf5823a297250573b8bad00f8970"
+source = "git+https://github.com/GaloisInc/swanky#27c2a3888342822c172805dfd0fb4f8ae6cb00a6"
 dependencies = [
  "base_conversion",
  "itertools",
@@ -146,9 +146,9 @@ checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
 
 [[package]]
 name = "libc"
-version = "0.2.71"
+version = "0.2.72"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9457b06509d27052635f90d6466700c65095fdf75409b3fbdd903e988b886f49"
+checksum = "a9f8082297d534141b30c8d39e9b1773713ab50fdbe4ff30f750d063b3bfd701"
 
 [[package]]
 name = "memchr"
@@ -159,7 +159,7 @@ checksum = "3728d817d99e5ac407411fa471ff9800a778d88a24685968b36824eaf4bee400"
 [[package]]
 name = "ocelot"
 version = "0.4.0"
-source = "git+https://github.com/GaloisInc/swanky#954b615363e1bf5823a297250573b8bad00f8970"
+source = "git+https://github.com/GaloisInc/swanky#27c2a3888342822c172805dfd0fb4f8ae6cb00a6"
 dependencies = [
  "cc",
  "curve25519-dalek",
@@ -246,13 +246,14 @@ version = "0.1.0"
 dependencies = [
  "fancy-garbling",
  "ocelot",
+ "rand",
  "scuttlebutt",
 ]
 
 [[package]]
 name = "scuttlebutt"
 version = "0.4.0"
-source = "git+https://github.com/GaloisInc/swanky#954b615363e1bf5823a297250573b8bad00f8970"
+source = "git+https://github.com/GaloisInc/swanky#27c2a3888342822c172805dfd0fb4f8ae6cb00a6"
 dependencies = [
  "curve25519-dalek",
  "rand",
