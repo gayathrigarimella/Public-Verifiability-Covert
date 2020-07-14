@@ -11,6 +11,6 @@ fn main() {
     //twopac::run_circuit(&mut circ, vec![0; 512], vec![]);
     //let mut circ = twopac::circuit("circuits/sha-256.txt");
     //twopac::run_circuit(&mut circ, vec![0; 512], vec![]);
-    //commit::test_commit();
+    commit::test_commit();
     commit::test_sending_commit();
 }
