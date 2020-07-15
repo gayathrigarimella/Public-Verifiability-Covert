@@ -32,7 +32,35 @@ let mut commit = ShaCommitment::new(seed);
  assert!(ShaCommitment::check(&commitment,&commitment_));
 
 }
+pub fn test_commit_diff() {
 
+
+    // define a seed
+    let seed = [0u8; 32];
+    
+    // create a commitment object
+    let mut commit = ShaCommitment::new(seed);
+    let input_seed = rand::thread_rng().gen::<[u8; 32]>();
+    
+    // write input messages
+     commit.input(b"hello ");
+     commit.input(b"world");
+     commit.input(&input_seed); //Note: 
+    
+     // finish commitment
+     let commitment = commit.finish();
+     //println!("seed: {:?}", seed);
+     println!("commitment: {:?}", commitment);
+}
+     // check a commitment
+     /*let seed = [0u8; 32];
+     let msg = b"hello world";
+     let mut commit_ = ShaCommitment::new(seed);
+     commit_.input(msg);
+     let commitment_ = commit_.finish();
+    
+     assert!(ShaCommitment::check(&commitment,&commitment_));*/
+    
 pub fn test_sending_bytes() { //using read_bytes();
 
 	let (mut sender, mut receiver) = unix_channel_pair();
