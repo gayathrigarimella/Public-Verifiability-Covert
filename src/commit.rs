@@ -1,5 +1,5 @@
 use scuttlebutt::commitment::{Commitment, ShaCommitment};
-use scuttlebutt::unix_channel_pair;
+use scuttlebutt::{unix_channel_pair, Block};
 use scuttlebutt::channel::AbstractChannel;
 use rand::Rng;
 
@@ -32,6 +32,7 @@ let mut commit = ShaCommitment::new(seed);
  assert!(ShaCommitment::check(&commitment,&commitment_));
 
 }
+
 pub fn test_commit_diff() {
 
 
@@ -41,11 +42,14 @@ pub fn test_commit_diff() {
     // create a commitment object
     let mut commit = ShaCommitment::new(seed);
     let input_seed = rand::thread_rng().gen::<[u8; 32]>();
+
+    let input_block = rand::random::<Block>();
     
     // write input messages
      commit.input(b"hello ");
      commit.input(b"world");
      commit.input(&input_seed); //Note: 
+     commit.input(&input_block.as_ref());
     
      // finish commitment
      let commitment = commit.finish();
@@ -66,12 +70,15 @@ pub fn test_sending_bytes() { //using read_bytes();
 	let (mut sender, mut receiver) = unix_channel_pair();
         let handle = std::thread::spawn(move || {
             let seed = rand::thread_rng().gen::<[u8; 16]>();
+            let seed_block = rand::random::<Block>(); 
             println!("sending data: {:?}",seed);
+            println!("sending block: {:?}", seed_block.as_ref());
             sender.write_bytes(&seed).unwrap();
+            sender.write_bytes(seed_block.as_ref()).unwrap();
         });
         
         //let mut commit = ShaCommitment::new(seed);
-        let mut data = [0u8;16]; //why is this [0u8;16]?
+        let mut data = [0u8;32]; //array + rand block
         receiver.read_bytes(&mut data).unwrap();
         println!("received data: {:?}",data);
         handle.join().ok();
