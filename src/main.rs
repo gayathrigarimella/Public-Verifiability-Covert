@@ -15,4 +15,9 @@ fn main() {
     //commit::test_commit();
     //commit::test_sending_commit();
     protocol::pvc();
+    commit::test_sending_bytes();
+    //commit::test_sending_commit();
+    //commit::commit_check_seed();
+    commit::test_commit_diff();
 }
+
