@@ -45,13 +45,14 @@ pub fn pvc() {
 		sender.write_bytes(&commitments[i]).unwrap();
 
 	}
+	sender.flush();
 	// Step 2
 	let rand_ind = thread_rng().gen_range(0,rep_fact);
     let mut b : [bool;rep_fact] = [false;rep_fact];
     b[rand_ind] = true;
     let mut rng = AesRng::new();
     let reader = BufReader::new(ot_receiver.try_clone().unwrap());
-    let writer = BufWriter::new(ot_receiver);
+    let writer = BufWriter::new(ot_receiver.try_clone().unwrap());
     let mut channel = Channel::new(reader, writer);
     let mut ot = OTReceiver::init(&mut channel, &mut rng).unwrap();
     let result = ot.receive(&mut channel, &b, &mut rng).unwrap();
@@ -65,14 +66,14 @@ pub fn pvc() {
 	for i in 0..rep_fact {
 		receiver.read_bytes(&mut commitments[i]).unwrap();
 		println!("received data: {:?}",commitments[i]);		}
-    	
+    receiver.flush();
    	// Step 2 
     let mut seed_a = rand_block_vec(rep_fact);
     let mut witness = rand_block_vec(rep_fact);
 
     let mut rng = AesRng::new();
     let reader = BufReader::new(ot_sender.try_clone().unwrap());
-    let writer = BufWriter::new(ot_sender);
+    let writer = BufWriter::new(ot_sender.try_clone().unwrap());
     let mut channel = Channel::new(reader, writer);
     let mut ot = OTSender::init(&mut channel, &mut rng).unwrap();
     let ot_messages = seed_a
