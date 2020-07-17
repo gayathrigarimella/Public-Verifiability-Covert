@@ -1,14 +1,18 @@
-
-use ocelot::ot::{ChouOrlandiSender as OTSender,ChouOrlandiReceiver as OTReceiver};
-use scuttlebutt::{Channel, AesRng, AbstractChannel};
+pub mod chou_orlandi;
+//use ocelot::ot::{ChouOrlandiSender as OTSender,ChouOrlandiReceiver as OTReceiver};
+use scuttlebutt::{Channel, AesRng};
 use ocelot::ot::{Sender,Receiver};
 use scuttlebutt::{Block};
 use std:: {
 	io::{BufReader, BufWriter},
-	os::unix::net::UnixStream,
-	time::SystemTime
+	os::unix::net::UnixStream
 };
 //use Block::rand_block_vec;
+pub type ChouOrlandiSender = chou_orlandi::Sender;
+/// Instantiation of the Chou-Orlandi OT receiver.
+pub type ChouOrlandiReceiver = chou_orlandi::Receiver;
+use ChouOrlandiSender as OTSender;
+use ChouOrlandiReceiver as OTReceiver;
 
 fn rand_block_vec(size: usize) -> Vec<Block> {
 	(0..size).map(|_| rand::random::<Block>()).collect()
@@ -23,8 +27,8 @@ pub fn test_ot() {
 	let m0s = rand_block_vec(n);
         let m1s = rand_block_vec(n);
         let bs = rand_bool_vec(n);
-        let m0s_ = m0s.clone();
-        let m1s_ = m1s.clone();
+        //let m0s_ = m0s.clone();
+        //let m1s_ = m1s.clone();
         let (sender, receiver) = UnixStream::pair().unwrap();
         let handle = std::thread::spawn(move || {
             let mut rng = AesRng::new();

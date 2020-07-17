@@ -1,13 +1,19 @@
 [package]
 name = "sample"
 version = "0.1.0"
-authors = ["jaspalsinghsaini <jaspal.singh@iitrpr.ac.in>"]
+authors = ["jaspalsinghsaini <jaspal.singh@iitrpr.ac.in>", "gayathrigarimella <garimelg@oregonstate.edu>"]
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+nightly = ["curve25519-dalek/avx2_backend", "rand/nightly", "scuttlebutt/nightly"]
+
 [dependencies]
+curve25519-dalek = { version = "2", features = ["std"] }
+libc = "0.2"
+itertools = "0.8.0"
 fancy-garbling = { git = "https://github.com/GaloisInc/swanky" }
-scuttlebutt = { git = "https://github.com/GaloisInc/swanky" }
+scuttlebutt = { git = "https://github.com/GaloisInc/swanky" , features = ["curve25519-dalek"]}
 ocelot = { git = "https://github.com/GaloisInc/swanky" }
 rand = "0.7"

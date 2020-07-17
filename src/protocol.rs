@@ -1,7 +1,6 @@
 use std:: {
 	io::{BufReader, BufWriter},
-	os::unix::net::UnixStream,
-	time::SystemTime
+	os::unix::net::UnixStream
 };
 use scuttlebutt::commitment::{Commitment, ShaCommitment};
 use rand::{Rng,thread_rng};
