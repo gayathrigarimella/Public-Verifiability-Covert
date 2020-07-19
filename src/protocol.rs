@@ -46,7 +46,7 @@ pub fn pvc() {
 	}
 	sender.flush();
 	// Step 2
-	let rand_ind = thread_rng().gen_range(0,rep_fact);
+	let rand_ind = thread_rng().gen_range(0,rep_fact); //this is the choice 'j_hat'
     let mut b : [bool;rep_fact] = [false;rep_fact];
     b[rand_ind] = true;
     let mut rng = AesRng::new();

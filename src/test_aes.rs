@@ -41,16 +41,11 @@ pub fn test_seeded_garbling() {
     let circ_ = circ.clone();
     let (sender, receiver) = unix_channel_pair();
     let handle = std::thread::spawn(move || {
-        let mut rng = AesRng::new();
-        //let mut rng2 = thread_rng();
-        //let rseed : Block;
-        //let rseed = rng2.gen();
-        //let rng2 = AesRng::from_seed(rseed);
-        //let mut rng1 = thread_rng();
-        let random_block: Block = rng.gen::<Block>();
-        let rng2 = AesRng::from_seed(random_block);
+        let mut rng2 = thread_rng();
+        let random_block: Block = rng2.gen::<Block>();
+        let rng = AesRng::from_seed(random_block);
         let mut gb =
-            Garbler::<UnixChannel, AesRng, ChouOrlandiSender>::new(sender, rng2).unwrap();
+            Garbler::<UnixChannel, AesRng, ChouOrlandiSender>::new(sender, rng).unwrap();
         let xs = gb.encode_many(&vec![0_u16; 128], &vec![2; 128]).unwrap();
         let ys = gb.receive_many(&vec![2; 128]).unwrap();
         circ_.eval(&mut gb, &xs, &ys).unwrap();
