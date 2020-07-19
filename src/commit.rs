@@ -1,8 +1,12 @@
 use scuttlebutt::commitment::{Commitment, ShaCommitment};
-use scuttlebutt::{unix_channel_pair, Block};
+use scuttlebutt::{unix_channel_pair, Block, AesRng};
 use scuttlebutt::channel::AbstractChannel;
 use rand::Rng;
 
+use rand::{CryptoRng, SeedableRng};
+use rand::{thread_rng};
+
+use fancy_garbling::{Wire};
 
 pub fn test_commit() {
 
@@ -44,12 +48,18 @@ pub fn test_commit_diff() {
     let input_seed = rand::thread_rng().gen::<[u8; 32]>();
 
     let input_block = rand::random::<Block>();
+
+    //sampling random wire and trying to commit that as a block 
+    let mut rng2 = thread_rng(); //
+    let input_wire = Wire::rand(&mut rng2, 2); //modulus for wire is u16, not sure what that is yet;
+    //usually they choose 2 as the wire modulus?
     
     // write input messages
      commit.input(b"hello ");
      commit.input(b"world");
      commit.input(&input_seed); //Note: 
      commit.input(&input_block.as_ref());
+     commit.input(&input_wire.as_block().as_ref()); //wire->block->bytes (u8 stream)
     
      // finish commitment
      let commitment = commit.finish();

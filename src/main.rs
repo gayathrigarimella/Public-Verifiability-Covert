@@ -21,8 +21,9 @@ fn main() {
     //commit::test_sending_bytes();
     //commit::test_sending_commit();
     //commit::commit_check_seed();
-    //commit::test_commit_diff();
-    test_ot::test_ot();
-    test_ot::test_seeded_ot();
+    commit::test_commit_diff();
+    //test_ot::test_ot();
+    //test_ot::test_seeded_ot();
+    //test_aes::test_chosen_ev_input();
 }
 
