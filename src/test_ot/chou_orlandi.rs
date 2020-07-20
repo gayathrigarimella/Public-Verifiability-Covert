@@ -34,6 +34,7 @@ pub struct Sender {
     rcvd_messages: Vec<u8> // contains the byte string of all the messages received from the Receiver
 }
 
+
 impl OtSender for Sender {
     type Msg = Block;
 

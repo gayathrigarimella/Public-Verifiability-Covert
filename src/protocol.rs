@@ -53,13 +53,12 @@ pub fn pvc() {
     let writer = BufWriter::new(ot_receiver.try_clone().unwrap());
     let mut channel = Channel::new(reader, writer);
     for i in 0..rep_fact {
-    	let mut rng = AesRng::new();
+    	let mut rng = AesRng::from_seed(seed_b[i]);
     	let mut ot = OTReceiver::init(&mut channel, &mut rng).unwrap();
     	let result = ot.receive(&mut channel, &[b[i]], &mut rng).unwrap();
     	println!("{:?}", result);
     }
     
-
 
 	});
 
