@@ -3,7 +3,7 @@ use std:: {
 	os::unix::net::UnixStream
 };
 use scuttlebutt::commitment::{Commitment, ShaCommitment};
-use rand::{Rng,thread_rng};
+use rand::{Rng,thread_rng, SeedableRng};
 use scuttlebutt::{Block,unix_channel_pair};
 use ocelot::ot::{ChouOrlandiSender as OTSender,ChouOrlandiReceiver as OTReceiver};
 use ocelot::ot::{Sender,Receiver};
@@ -49,13 +49,16 @@ pub fn pvc() {
 	let rand_ind = thread_rng().gen_range(0,rep_fact); //this is the choice 'j_hat'
     let mut b : [bool;rep_fact] = [false;rep_fact];
     b[rand_ind] = true;
-    let mut rng = AesRng::new();
     let reader = BufReader::new(ot_receiver.try_clone().unwrap());
     let writer = BufWriter::new(ot_receiver.try_clone().unwrap());
     let mut channel = Channel::new(reader, writer);
-    let mut ot = OTReceiver::init(&mut channel, &mut rng).unwrap();
-    let result = ot.receive(&mut channel, &b, &mut rng).unwrap();
-    println!("{:?}", result);
+    for i in 0..rep_fact {
+    	let mut rng = AesRng::new();
+    	let mut ot = OTReceiver::init(&mut channel, &mut rng).unwrap();
+    	let result = ot.receive(&mut channel, &[b[i]], &mut rng).unwrap();
+    	println!("{:?}", result);
+    }
+    
 
 
 	});
@@ -70,17 +73,21 @@ pub fn pvc() {
     let mut seed_a = rand_block_vec(rep_fact);
     let mut witness = rand_block_vec(rep_fact);
 
-    let mut rng = AesRng::new();
     let reader = BufReader::new(ot_sender.try_clone().unwrap());
     let writer = BufWriter::new(ot_sender.try_clone().unwrap());
     let mut channel = Channel::new(reader, writer);
-    let mut ot = OTSender::init(&mut channel, &mut rng).unwrap();
     let ot_messages = seed_a
                 .into_iter()
                 .zip(witness.into_iter())
                 .collect::<Vec<(Block, Block)>>();
     println!("Hello: {:?}", ot_messages);
-    ot.send(&mut channel, &ot_messages, &mut rng).unwrap();
+    for i in 0..rep_fact {
+    	let seed = rand::random::<Block>();
+    	let mut rng = AesRng::from_seed(seed);
+    	let mut ot = OTSender::init(&mut channel, &mut rng).unwrap();
+    	ot.send(&mut channel, &[ot_messages[i]], &mut rng).unwrap();
+    }
     handle.join().unwrap();
+
 
 }			

@@ -31,6 +31,7 @@ use scuttlebutt::{AbstractChannel, Block, Malicious, SemiHonest};
 pub struct Sender {
     y: Scalar,
     s: RistrettoPoint,
+    rcvd_messages: Vec<u8> // contains the byte string of all the messages received from the Receiver
 }
 
 impl OtSender for Sender {
@@ -42,9 +43,10 @@ impl OtSender for Sender {
     ) -> Result<Self, Error> {
         let y = Scalar::random(&mut rng);
         let s = &y * &RISTRETTO_BASEPOINT_TABLE;
+        let rcvd_messages: Vec<u8> = Vec::new();
         channel.write_pt(&s)?;
         channel.flush()?;
-        Ok(Self { y, s })
+        Ok(Self { y, s, rcvd_messages})
     }
 
     fn send<C: AbstractChannel, RNG: CryptoRng + Rng>(
@@ -57,6 +59,7 @@ impl OtSender for Sender {
         let ks = (0..inputs.len())
             .map(|i| {
                 let r = channel.read_pt()?;
+                self.rcvd_messages.extend_from_slice(r.compress().as_bytes());
                 let yr = self.y * r;
                 let k0 = Block::hash_pt(i, &yr);
                 let k1 = Block::hash_pt(i, &(yr - ys));
