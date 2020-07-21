@@ -13,6 +13,7 @@ pub fn circuit(fname: &str) -> Circuit {
 }
 
 
+
 pub fn run_circuit(circ: &mut Circuit, gb_inputs: Vec<u16>, ev_inputs: Vec<u16>) {
     let circ_ = circ.clone();
     let (sender, receiver) = unix_channel_pair();

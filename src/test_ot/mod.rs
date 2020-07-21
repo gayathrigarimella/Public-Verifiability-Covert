@@ -1,6 +1,9 @@
 pub mod chou_orlandi;
+mod garbler;
+mod evaluator;
+
 //use ocelot::ot::{ChouOrlandiSender as OTSender,ChouOrlandiReceiver as OTReceiver};
-use scuttlebutt::{Channel, AesRng};
+use scuttlebutt::{Channel, AesRng, unix_channel_pair, UnixChannel};
 use ocelot::ot::{Sender,Receiver};
 use scuttlebutt::{Block};
 use std:: {
@@ -9,6 +12,11 @@ use std:: {
 };
 use rand::{CryptoRng, Rng, SeedableRng};
 use rand::{thread_rng};
+use fancy_garbling::{circuit::Circuit, FancyInput};
+
+pub use evaluator::Evaluator;
+pub use garbler::Garbler;
+
 //use Block::rand_block_vec;
 pub type ChouOrlandiSender = chou_orlandi::Sender;
 /// Instantiation of the Chou-Orlandi OT receiver.
@@ -91,4 +99,33 @@ pub fn test_seeded_ot() {
         let result = ot.receive(&mut channel, &bs, &mut rng).unwrap();
         println!("{:?}", result);
         handle.join().unwrap();
+}
+
+pub fn test_aes() {
+    let circ = Circuit::parse("circuits/AES-non-expanded.txt").unwrap();
+
+    circ.print_info().unwrap();
+
+    let circ_ = circ.clone();
+    let (sender, receiver) = unix_channel_pair();
+    let handle = std::thread::spawn(move || {
+        let rng = AesRng::new();
+        let mut gb =
+            Garbler::<UnixChannel, AesRng, ChouOrlandiSender>::new(sender, rng).unwrap();
+        let xs = gb.encode_many(&vec![0_u16; 128], &vec![2; 128]).unwrap();
+        let ys = gb.receive_many(&vec![2; 128]).unwrap();
+        circ_.eval(&mut gb, &xs, &ys).unwrap();
+
+        let garbler_input_encoding = gb.garbler_wires;
+        println!("test-aes, garbler's input wires {:?}", garbler_input_encoding);
+    });
+        
+        
+    let rng = AesRng::new();
+    let mut ev =
+        Evaluator::<UnixChannel, AesRng, ChouOrlandiReceiver>::new(receiver, rng).unwrap();
+    let xs = ev.receive_many(&vec![2; 128]).unwrap();
+    let ys = ev.encode_many(&vec![0_u16; 128], &vec![2; 128]).unwrap();
+    circ.eval(&mut ev, &xs, &ys).unwrap();
+    handle.join().unwrap();
 }

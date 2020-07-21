@@ -3,6 +3,7 @@ use fancy_garbling::{
     twopac::semihonest::{Evaluator, Garbler},
     FancyInput,
 };
+
 use ocelot::ot::{ChouOrlandiSender,ChouOrlandiReceiver};
 use scuttlebutt::{unix_channel_pair, AesRng, UnixChannel, Block};
 use rand::{CryptoRng, Rng, SeedableRng};
