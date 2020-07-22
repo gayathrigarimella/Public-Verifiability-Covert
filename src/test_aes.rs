@@ -37,14 +37,18 @@ pub fn test_seeded_garbling() {
        
     let circ = Circuit::parse("circuits/AES-non-expanded.txt").unwrap();
 
-    circ.print_info().unwrap();
+    //circ.print_info().unwrap();
 
     let circ_ = circ.clone();
     let (sender, receiver) = unix_channel_pair();
     let handle = std::thread::spawn(move || {
         let mut rng2 = thread_rng();
         let random_block: Block = rng2.gen::<Block>();
-        let rng = AesRng::from_seed(random_block);
+        let mut rng = AesRng::from_seed(random_block);
+        /*let mut rng3 = AesRng::from_seed(random_block);
+        let random_block2 : Block = rng.gen::<Block>();
+        let random_block3 : Block = rng3.gen::<Block>();
+        println!("testing randomness {}, {}", random_block2, random_block3);*/
         let mut gb =
             Garbler::<UnixChannel, AesRng, ChouOrlandiSender>::new(sender, rng).unwrap();
         let xs = gb.encode_many(&vec![0_u16; 128], &vec![2; 128]).unwrap();

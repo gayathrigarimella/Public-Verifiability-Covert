@@ -4,10 +4,14 @@
 // Copyright © 2019 Galois, Inc.
 // See LICENSE for licensing information.
 
-use fancy_garbling::{errors::TwopacError, Fancy, FancyInput, FancyReveal, Garbler as Gb, Wire};
+use fancy_garbling::{errors::TwopacError, Fancy, FancyInput, FancyReveal, Wire, Garbler as Gb, HasModulus};
 use ocelot::ot::Sender as OtSender;
 use rand::{CryptoRng, Rng, SeedableRng};
 use scuttlebutt::{AbstractChannel, Block, SemiHonest};
+//use crate::garble::{Garbler as Gb};
+use std::collections::HashMap;
+
+ 
 
 /// Semi-honest garbler.
 pub struct Garbler<C, RNG, OT> {
@@ -15,7 +19,9 @@ pub struct Garbler<C, RNG, OT> {
     channel: C,
     ot: OT,
     rng: RNG,
-    pub garbler_wires : Vec<(Wire, Wire)>
+    pub evaluator_wires : Vec<(Wire, Wire)>,
+    pub garbler_wires : Vec<(Wire, Wire)>,
+    deltas: HashMap<u16, Wire>
 }
 
 
@@ -42,13 +48,17 @@ impl<
     pub fn new(mut channel: C, mut rng: RNG) -> Result<Self, TwopacError> {
         let ot = OT::init(&mut channel, &mut rng)?;
         let garbler = Gb::new(channel.clone(), RNG::from_seed(rng.gen()));
+        let evaluator_wires: Vec<(Wire, Wire)> = Vec::new();
         let garbler_wires: Vec<(Wire, Wire)> = Vec::new();
         Ok(Garbler {
             garbler,
             channel,
             ot,
             rng,
-            garbler_wires
+            evaluator_wires,
+            garbler_wires, 
+            deltas: HashMap::new()
+            
         })
     }
 
@@ -65,7 +75,7 @@ impl<
                 let zero = Wire::rand(&mut self.rng, q);
                 let one = zero.plus(&delta);
                 let mut v = vec![(zero.clone(), one.clone())];
-                self.garbler_wires.append(&mut v);
+                self.evaluator_wires.append(&mut v);
                 wire = wire.plus(&zero.cmul(1 << i));
                 (zero.as_block(), one.as_block())
             })
@@ -73,6 +83,23 @@ impl<
         (wire, inputs)
     }
 
+
+    fn delta(&mut self, q: u16) -> Wire {
+        if let Some(delta) = self.deltas.get(&q) {
+            return delta.clone();
+        }
+        let w = Wire::rand_delta(&mut self.rng, q);
+        self.deltas.insert(q, w.clone());
+        w
+    }
+
+    fn encode_wire(&mut self, val: u16, modulus: u16) -> (Wire, Wire, Wire) {
+        let zero = Wire::rand(&mut self.rng, modulus);
+        let delta = self.delta(modulus);
+        let one = zero.plus(&delta);
+        let enc = zero.plus(&delta.cmul(val));
+        (zero, enc, one)
+    }
 
 }
 
@@ -92,16 +119,16 @@ impl<
         Ok(mine)
     }
 
-    
-
     fn encode_many(&mut self, vals: &[u16], moduli: &[u16]) -> Result<Vec<Wire>, TwopacError> {
         let ws = vals
             .iter()
             .zip(moduli.iter())
             .map(|(x, q)| {
-                let (mine, theirs) = self.garbler.encode_wire(*x, *q);
+                let (zero, theirs, one) = self.encode_wire(*x, *q);
+                let mut v = vec![(zero.clone(), one.clone())];
+                self.garbler_wires.append(&mut v);
                 self.garbler.send_wire(&theirs)?;
-                Ok(mine)
+                Ok(zero)
             })
             .collect();
         self.channel.flush()?;

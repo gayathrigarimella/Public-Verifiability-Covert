@@ -1,6 +1,8 @@
 pub mod chou_orlandi;
 mod garbler;
 mod evaluator;
+//mod garble;
+
 
 //use ocelot::ot::{ChouOrlandiSender as OTSender,ChouOrlandiReceiver as OTReceiver};
 use scuttlebutt::{Channel, AesRng, unix_channel_pair, UnixChannel};
@@ -13,6 +15,7 @@ use std:: {
 use rand::{CryptoRng, Rng, SeedableRng};
 use rand::{thread_rng};
 use fancy_garbling::{circuit::Circuit, FancyInput};
+//use crate::garble::{Garbler as Gb, Evaluator as Ev};
 
 pub use evaluator::Evaluator;
 pub use garbler::Garbler;
@@ -116,8 +119,10 @@ pub fn test_aes() {
         let ys = gb.receive_many(&vec![2; 128]).unwrap();
         circ_.eval(&mut gb, &xs, &ys).unwrap();
 
-        let garbler_input_encoding = gb.garbler_wires;
-        println!("test-aes, garbler's input wires {:?}", garbler_input_encoding);
+        //let evaluator_encoding = gb.evaluator_wires;
+        let garbler_encoding = gb.garbler_wires;
+        println!("actual encoding of garbler {:?}", xs[20]);
+        println!("test-aes, garbler's input wires {:?}", garbler_encoding[20]);
     });
         
         
