@@ -85,7 +85,9 @@ pub fn pvc() {
     	let mut rng = AesRng::from_seed(seed);
     	let mut ot = OTSender::init(&mut channel, &mut rng).unwrap();
     	ot.send(&mut channel, &[ot_messages[i]], &mut rng).unwrap();
-    }
+	}
+	//step 3 
+	
     handle.join().unwrap();
 
 

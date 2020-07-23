@@ -12,9 +12,11 @@ use std:: {
 	io::{BufReader, BufWriter},
 	os::unix::net::UnixStream
 };
-use rand::{CryptoRng, Rng, SeedableRng};
+use rand::{Rng, SeedableRng};
 use rand::{thread_rng};
 use fancy_garbling::{circuit::Circuit, FancyInput};
+use scuttlebutt::commitment::{Commitment, ShaCommitment};
+//use fancy_garbling::circuit;
 //use crate::garble::{Garbler as Gb, Evaluator as Ev};
 
 pub use evaluator::Evaluator;
@@ -119,10 +121,14 @@ pub fn test_aes() {
         let ys = gb.receive_many(&vec![2; 128]).unwrap();
         circ_.eval(&mut gb, &xs, &ys).unwrap();
 
-        //let evaluator_encoding = gb.evaluator_wires;
+        let evaluator_encoding = gb.evaluator_wires;
         let garbler_encoding = gb.garbler_wires;
-        println!("actual encoding of garbler {:?}", xs[20]);
-        println!("test-aes, garbler's input wires {:?}", garbler_encoding[20]);
+
+        println!("actual encoding of garbler {:?}", xs[10]);
+        println!("test-aes, garbler's input wires {:?}", garbler_encoding[10]);
+
+        println!("actual encoding of garbler {:?}", ys[10]);
+        println!("test-aes, garbler's input wires {:?}", evaluator_encoding[10]);
     });
         
         
@@ -134,3 +140,83 @@ pub fn test_aes() {
     circ.eval(&mut ev, &xs, &ys).unwrap();
     handle.join().unwrap();
 }
+
+
+
+pub fn pvc() {
+	//	the computational security parameter is
+	//	set to 128 for this implementation
+
+	const rep_fact: usize = 4;		//	replicating factor 
+	let seed = rand::thread_rng().gen::<[u8; 32]>(); // sha commitment seed
+
+	let (mut sender, mut receiver) = unix_channel_pair();
+	let (ot_sender, ot_receiver) = UnixStream::pair().unwrap();
+    
+    let handle = std::thread::spawn(move || {
+		
+		
+	// Step 1
+	let seed_b = rand_block_vec(rep_fact);
+	let mut commit = ShaCommitment::new(seed);
+	let mut commitments: [[u8; 32]; rep_fact] = [[0; 32]; rep_fact];
+	for i in 0..rep_fact {
+		let s_b = seed_b[i].as_ref();
+		println!("sending seed: {:?}",s_b);
+		for j in 0..16 {
+			commit.input(&[s_b[j]]);
+		}
+		commitments[i] = commit.finish();
+		commit = ShaCommitment::new(seed);
+		sender.write_bytes(&commitments[i]).unwrap();
+
+	}
+	sender.flush();
+	// Step 2
+	let rand_ind = thread_rng().gen_range(0,rep_fact); //this is the choice 'j_hat'
+    let mut b : [bool;rep_fact] = [false;rep_fact];
+    b[rand_ind] = true;
+    let reader = BufReader::new(ot_receiver.try_clone().unwrap());
+    let writer = BufWriter::new(ot_receiver.try_clone().unwrap());
+    let mut channel = Channel::new(reader, writer);
+    for i in 0..rep_fact {
+    	let mut rng = AesRng::from_seed(seed_b[i]);
+    	let mut ot = OTReceiver::init(&mut channel, &mut rng).unwrap();
+    	let result = ot.receive(&mut channel, &[b[i]], &mut rng).unwrap();
+    	println!("{:?}", result);
+    }
+    
+
+	});
+
+	// Step 1
+	let mut commitments: [[u8; 32]; rep_fact] = [[0; 32]; rep_fact];
+	for i in 0..rep_fact {
+		receiver.read_bytes(&mut commitments[i]).unwrap();
+		println!("received data: {:?}",commitments[i]);		}
+    receiver.flush();
+   	// Step 2 
+    let mut seed_a = rand_block_vec(rep_fact);
+    let mut witness = rand_block_vec(rep_fact);
+
+    let reader = BufReader::new(ot_sender.try_clone().unwrap());
+    let writer = BufWriter::new(ot_sender.try_clone().unwrap());
+    let mut channel = Channel::new(reader, writer);
+    let ot_messages = seed_a
+                .into_iter()
+                .zip(witness.into_iter())
+                .collect::<Vec<(Block, Block)>>();
+    println!("Hello: {:?}", ot_messages);
+    for i in 0..rep_fact {
+    	let seed = rand::random::<Block>();
+    	let mut rng = AesRng::from_seed(seed);
+    	let mut ot = OTSender::init(&mut channel, &mut rng).unwrap();
+    	ot.send(&mut channel, &[ot_messages[i]], &mut rng).unwrap();
+	}
+	//step 3 
+	
+    handle.join().unwrap();
+
+
+}			
+
