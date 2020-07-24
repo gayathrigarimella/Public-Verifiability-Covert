@@ -5,6 +5,7 @@ mod evaluator;
 
 
 //use ocelot::ot::{ChouOrlandiSender as OTSender,ChouOrlandiReceiver as OTReceiver};
+use scuttlebutt::channel::AbstractChannel;
 use scuttlebutt::{Channel, AesRng, unix_channel_pair, UnixChannel};
 use ocelot::ot::{Sender,Receiver};
 use scuttlebutt::{Block};
@@ -144,79 +145,157 @@ pub fn test_aes() {
 
 
 pub fn pvc() {
-	//	the computational security parameter is
-	//	set to 128 for this implementation
+	//	kappa = 128, lambda = 4
 
-	const rep_fact: usize = 4;		//	replicating factor 
-	let seed = rand::thread_rng().gen::<[u8; 32]>(); // sha commitment seed
+    const lambda: usize = 4;		//	replicating factor 
 
-	let (mut sender, mut receiver) = unix_channel_pair();
-	let (ot_sender, ot_receiver) = UnixStream::pair().unwrap();
+    let circ = Circuit::parse("circuits/AES-non-expanded.txt").unwrap(); //we are garbling AES
+
+    //circ.print_info().unwrap(); let circ_ = circ.clone(); 
+	
+	let (mut receiver, mut sender) = unix_channel_pair();
+    let (ot_sender, ot_receiver) = UnixStream::pair().unwrap();
     
+    //We sample random inputs for computing the circuit for both parties
+    let mut input_rng = thread_rng();
+    let mut party_a_input = [0u16; 128];
+    let mut party_b_input = [0u16; 128];
+    input_rng.fill(&mut party_a_input);
+    input_rng.fill(&mut party_b_input);
+
     let handle = std::thread::spawn(move || {
 		
-		
-	// Step 1
-	let seed_b = rand_block_vec(rep_fact);
-	let mut commit = ShaCommitment::new(seed);
-	let mut commitments: [[u8; 32]; rep_fact] = [[0; 32]; rep_fact];
-	for i in 0..rep_fact {
+	//party_b: sender thread  
+	// Step (a)
+    let seed_b = rand_block_vec(lambda); //party_b samples his seeds
+    let mut comm_seed_a = rand::thread_rng().gen::<[u8; 32]>(); // sha commitment seed
+	let mut commit = ShaCommitment::new(comm_seed_a);
+	let mut commitments: [[u8; 32]; lambda] = [[0; 32]; lambda];
+	for i in 0..lambda {
 		let s_b = seed_b[i].as_ref();
-		println!("sending seed: {:?}",s_b);
+		//println!("sending seed: {:?}",s_b);
 		for j in 0..16 {
-			commit.input(&[s_b[j]]);
+			commit.input(&[s_b[j]]); //<Block> has size [u8;16]
 		}
-		commitments[i] = commit.finish();
-		commit = ShaCommitment::new(seed);
-		sender.write_bytes(&commitments[i]).unwrap();
+        commitments[i] = commit.finish();
+        comm_seed_a = rand::thread_rng().gen::<[u8; 32]>();
+        commit = ShaCommitment::new(comm_seed_a);
+        sender.write_bytes(&commitments[i]).unwrap();
 
-	}
-	sender.flush();
-	// Step 2
-	let rand_ind = thread_rng().gen_range(0,rep_fact); //this is the choice 'j_hat'
-    let mut b : [bool;rep_fact] = [false;rep_fact];
-    b[rand_ind] = true;
+    }
+    sender.flush();
+    
+    
+    // Step (b) : j_hat, recei
+    
+	let j_hat = thread_rng().gen_range(0, lambda); //this is the choice 'j_hat'
+    let mut b : [bool; lambda] = [false; lambda];
+    b[j_hat] = true; //choosing choice bits of OT
     let reader = BufReader::new(ot_receiver.try_clone().unwrap());
     let writer = BufWriter::new(ot_receiver.try_clone().unwrap());
     let mut channel = Channel::new(reader, writer);
-    for i in 0..rep_fact {
+    for i in 0..lambda {
     	let mut rng = AesRng::from_seed(seed_b[i]);
     	let mut ot = OTReceiver::init(&mut channel, &mut rng).unwrap();
-    	let result = ot.receive(&mut channel, &[b[i]], &mut rng).unwrap();
-    	println!("{:?}", result);
+        let rcv_seed_a = ot.receive(&mut channel, &[b[i]], &mut rng).unwrap(); //keeping track seed_a from party_b perspective
+        //println!("lambda:{}, ot-received: {:?}", j_hat, result);
     }
+
+    //TODO_1: save transcript of the OT in step b as 'trans_j'
+
+
+    // step (c) : used the seed_b(s) initialize the evaluator
+        // the OT is utilizes the same rng (and seed) as the OT in 
+        // garbler call to encode_many()
+
+     for i in 0..lambda {
+        let mut rng = AesRng::from_seed(seed_b[i]);
+        let mut ev =
+        Evaluator::<UnixChannel, AesRng, ChouOrlandiReceiver>::new(sender.clone(), rng).unwrap();
+        let xs = ev.receive_many(&vec![2; 128]).unwrap();
+        if (i == j_hat) {
+            let party_b_evalwires = ev.encode_many(&party_b_input, &vec![2; 128]).unwrap();
+            // only for j_hat, provide GC input 'y'
+        } else {
+            let ys = ev.encode_many(&vec![0_u16; 128], &vec![2; 128]).unwrap();
+            // for all GC's learn the dummy zero wire labels
+        }
+     }
+     //TODO2: save the transcript hash for the OT called in encode_many(), is that possible here?
+
+
+    // step (d) : collect commit(input_commit, GC, output_wire) for each 'j'
+
+
+
+
+
+    });
+
+
+
+
     
-
-	});
-
-	// Step 1
-	let mut commitments: [[u8; 32]; rep_fact] = [[0; 32]; rep_fact];
-	for i in 0..rep_fact {
+    // party_a : receiver thread
+	// Step (a)
+	let mut commitments: [[u8; 32]; lambda] = [[0; 32]; lambda]; //expecting commitment of seed_b(s)
+	for i in 0..lambda {
 		receiver.read_bytes(&mut commitments[i]).unwrap();
-		println!("received data: {:?}",commitments[i]);		}
+        //println!("received data: {:?}",commitments[i]);		
+    }
     receiver.flush();
-   	// Step 2 
-    let mut seed_a = rand_block_vec(rep_fact);
-    let mut witness = rand_block_vec(rep_fact);
+
+
+       // Step (b) : sampling seed_a(s), sending messages <seed_a, witness>
+       
+    let seed_a = rand_block_vec(lambda); //sample block-sized <seed_a(s), witness> for OT
+    let witness = rand_block_vec(lambda);
 
     let reader = BufReader::new(ot_sender.try_clone().unwrap());
     let writer = BufWriter::new(ot_sender.try_clone().unwrap());
     let mut channel = Channel::new(reader, writer);
-    let ot_messages = seed_a
+    let ot_messages_b = seed_a.clone() //setting (seed_a, witness) as OT input messages
                 .into_iter()
                 .zip(witness.into_iter())
                 .collect::<Vec<(Block, Block)>>();
-    println!("Hello: {:?}", ot_messages);
-    for i in 0..rep_fact {
-    	let seed = rand::random::<Block>();
-    	let mut rng = AesRng::from_seed(seed);
+    //println!("Hello: {:?}", ot_messages_b);
+    for i in 0..lambda {
+    	let ot_seed_b = rand::random::<Block>();
+    	let mut rng = AesRng::from_seed(ot_seed_b);
     	let mut ot = OTSender::init(&mut channel, &mut rng).unwrap();
-    	ot.send(&mut channel, &[ot_messages[i]], &mut rng).unwrap();
-	}
-	//step 3 
-	
-    handle.join().unwrap();
+    	ot.send(&mut channel, &[ot_messages_b[i]], &mut rng).unwrap();
+    }
+    //TODO_1: save transcript of the OT in step b as 'trans_j'
+
+    receiver.flush();
 
 
-}			
+    // step (c) : used the seed_a(s) to initialize all lambda GC
+        // note the OT is seeded by same randomness
+        // garbler: 
+
+    
+    for i in 0..lambda {
+        let mut rng = AesRng::from_seed(seed_a[i]);
+        let mut gb =
+            Garbler::<UnixChannel, AesRng, ChouOrlandiSender>::new(receiver.clone(), rng).unwrap();
+        let xs = gb.encode_many(&vec![0_u16; 128], &vec![2; 128]).unwrap();
+        let ys = gb.receive_many(&vec![2; 128]).unwrap(); // This function calls OT send, OT uses the same rng seeded by 
+        //circ.eval(&mut gb, &xs, &ys).unwrap();
+    }
+
+    
+    //TODO2: save the transcript hash for the OT called in receive_many(), is that possible here?
+    
+    
+    // step (d) : commit both the garbler's input wires as C1
+        // then commit and send c = (GC_j, C1, output_wires)
+
+
+
+    //handle.join.unwrap();
+    
+
+    }			
+
 
