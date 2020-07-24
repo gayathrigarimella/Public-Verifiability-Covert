@@ -6,10 +6,12 @@
 //mod commit;
 //mod protocol;
 mod test_ot;
-//mod signature;
+mod signature;
 
 fn main() {
-    test_ot::pvc();
+    //test_ot::pvc();
+
+
     //test_ot::test_aes();
     //test_aes::test_seeded_garbling();
     //let mut circ = twopac::circuit("circuits/AES-non-expanded.txt");
@@ -28,6 +30,7 @@ fn main() {
     //test_ot::test_ot();
     //test_ot::test_seeded_ot();
     //test_aes::test_chosen_ev_input();
-    //signature::test_signature();
+    signature::circuit_signature();
+    //test_aes::reading_circuit();
 }
 
