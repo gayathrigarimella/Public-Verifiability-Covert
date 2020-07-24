@@ -15,7 +15,7 @@ use std:: {
 };
 use rand::{Rng, SeedableRng};
 use rand::{thread_rng};
-use fancy_garbling::{circuit::Circuit, FancyInput};
+use fancy_garbling::{circuit::Circuit, FancyInput, Wire};
 use scuttlebutt::commitment::{Commitment, ShaCommitment};
 //use fancy_garbling::circuit;
 //use crate::garble::{Garbler as Gb, Evaluator as Ev};
@@ -128,7 +128,7 @@ pub fn test_aes() {
         println!("actual encoding of garbler {:?}", xs[10]);
         println!("test-aes, garbler's input wires {:?}", garbler_encoding[10]);
 
-        println!("actual encoding of garbler {:?}", ys[10]);
+        println!("actual encoding of evaluator {:?}", ys[10]);
         println!("test-aes, garbler's input wires {:?}", evaluator_encoding[10]);
     });
         
@@ -138,6 +138,19 @@ pub fn test_aes() {
         Evaluator::<UnixChannel, AesRng, ChouOrlandiReceiver>::new(receiver, rng).unwrap();
     let xs = ev.receive_many(&vec![2; 128]).unwrap();
     let ys = ev.encode_many(&vec![0_u16; 128], &vec![2; 128]).unwrap();
+
+       /* let garbler_encoding = gb.garbler_wires;
+        let evaluator_encoding = gb.evaluator_wires;
+
+
+        println!("actual encoding of garbler {:?}", xs[10]);
+        println!("test-aes, garbler's input wires {:?}", garbler_encoding[10]);
+
+        println!("actual encoding of evaluator {:?}", ys[10]);
+        println!("test-aes, garbler's input wires {:?}", evaluator_encoding[10]);*/
+
+    println!("ev side: actual encoding of garbler {:?}", xs[10]);
+    println!("ev side: actual encoding of evaluator {:?}", ys[10]);
     circ.eval(&mut ev, &xs, &ys).unwrap();
     handle.join().unwrap();
 }
@@ -153,7 +166,8 @@ pub fn pvc() {
 
     //circ.print_info().unwrap(); let circ_ = circ.clone(); 
 	
-	let (mut receiver, mut sender) = unix_channel_pair();
+    let (mut receiver, mut sender) = unix_channel_pair();
+    let (mut commit_receiver, mut commit_sender) = unix_channel_pair();
     let (ot_sender, ot_receiver) = UnixStream::pair().unwrap();
     
     //We sample random inputs for computing the circuit for both parties
@@ -208,21 +222,29 @@ pub fn pvc() {
         // the OT is utilizes the same rng (and seed) as the OT in 
         // garbler call to encode_many()
 
+    let mut party_b_evalwires : Vec<Wire> = Vec::new(); //store the evaluator's for final GC computation
      for i in 0..lambda {
         let rng = AesRng::from_seed(seed_b[i]);
         let mut ev =
         Evaluator::<UnixChannel, AesRng, ChouOrlandiReceiver>::new(sender.clone(), rng).unwrap();
         let xs = ev.receive_many(&vec![2; 128]).unwrap();
+        println!("ev side: actual encoding of garbler {:?}", xs[10]);
         if i == j_hat {
-            let party_b_evalwires = ev.encode_many(&party_b_input, &vec![2; 128]).unwrap();
+            party_b_evalwires = ev.encode_many(&party_b_input, &vec![2; 128]).unwrap();
+            println!("ev side: actual encoding of evaluator {:?}", party_b_evalwires[10]);
+            //println!("party_b_evalwires: {}", party_b_evalwires[10]);
             // only for j_hat, provide GC input 'y'
         } else {
             let ys = ev.encode_many(&vec![0_u16; 128], &vec![2; 128]).unwrap();
+            println!("ev side: actual encoding of evaluator {:?}", ys[10]);
             // for all GC's learn the dummy zero wire labels
         }
+        
         sender.flush();
      }
 
+        println!("ev side: party_b_eval_wires {}", party_b_evalwires.len());
+        println!("ev side: actual encoding of evaluator {:?}", party_b_evalwires[10]);
      
      //TODO2: save the transcript hash for the OT called in encode_many()
 
@@ -232,13 +254,10 @@ pub fn pvc() {
 
         let mut rcv_gc_commitments: [[u8; 32]; lambda] = [[0; 32]; lambda]; //expecting commitment of seed_b(s)
         for i in 0..lambda {
-            sender.clone().read_bytes(&mut rcv_gc_commitments[i]).unwrap();
-            //println!("received data: {:?}",commitments[i]);		
+            commit_sender.read_bytes(&mut rcv_gc_commitments[i]).unwrap();
+            println!("received data: {:?}",rcv_gc_commitments[i]);		
         }
-        sender.flush();
-    
-
-
+        //sender.flush();
 
     });
 
@@ -291,39 +310,42 @@ pub fn pvc() {
     //initializing array of commitments sent by party_a to party_b 
     let mut gc_commitments: [[u8; 32]; lambda] = [[0; 32]; lambda];
 
-    let mut comm_seed_d = rand::thread_rng().gen::<[u8; 32]>(); 
-    let mut commit = ShaCommitment::new(comm_seed_d); //initializing the commitment for step d 
-
+   
     for i in 0..lambda {
-        let rng = AesRng::from_seed(seed_a[i]);
+        let mut rng = AesRng::from_seed(seed_a[i]);
+        let mut comm_seed_d = rng.gen::<[u8; 32]>();
+        let mut commit = ShaCommitment::new(comm_seed_d); //deriving randomness from seed_a for commit
         let mut gb =
             Garbler::<UnixChannel, AesRng, ChouOrlandiSender>::new(receiver.clone(), rng).unwrap();
         let xs = gb.encode_many(&vec![0_u16; 128], &vec![2; 128]).unwrap();
         let ys = gb.receive_many(&vec![2; 128]).unwrap(); // This function calls OT send, OT uses the same rng seeded by 
         //circ.eval(&mut gb, &xs, &ys).unwrap();
+
         receiver.flush();
 
         // step (d)
-        // commiting the garbler's wire labels for each GC_j
+        // commiting the garbler's wire labels for each (GC_j, comm(A), Z)
         
-        let evaluator_encoding = gb.evaluator_wires;
+        let mut evaluator_encoding = gb.evaluator_wires;
+        println!("evaluator encoding length is {}", evaluator_encoding.len());
         for i in 0..evaluator_encoding.len() {
+
             commit.input(&evaluator_encoding[i].0.as_block().as_ref()); //zero wire
             commit.input(&evaluator_encoding[i].1.as_block().as_ref()); //one wire
         }
 
         gc_commitments[i] = commit.finish();
-        comm_seed_d = rand::thread_rng().gen::<[u8; 32]>();
-        commit = ShaCommitment::new(comm_seed_d);
         //step (d) sending the commitments
-        receiver.clone().write_bytes(&gc_commitments[i]).unwrap();
-
+        
+       
+        commit_receiver.write_bytes(&gc_commitments[i]).unwrap();
+        println!("send data: {:?}",gc_commitments[i]);
+        
+       
     }
-
     
-    
-    //TODO2: save the transcript hash for the OT called in receive_many(), is that possible here?
-    
+    //TODO2: step (c) save the transcript hash for the OT called in receive_many(), is that possible here?
+    //TODO3: step (d) need to commit the c_j(s) = (GC_j, commit(garbler inputs), output wires)
 
     //\handle.join.unwrap();
     
