@@ -170,17 +170,17 @@ pub fn pvc() {
     let seed_b = rand_block_vec(lambda); //party_b samples his seeds
     let mut comm_seed_a = rand::thread_rng().gen::<[u8; 32]>(); // sha commitment seed
 	let mut commit = ShaCommitment::new(comm_seed_a);
-	let mut commitments: [[u8; 32]; lambda] = [[0; 32]; lambda];
+	let mut seed_commitments: [[u8; 32]; lambda] = [[0; 32]; lambda];
 	for i in 0..lambda {
 		let s_b = seed_b[i].as_ref();
 		//println!("sending seed: {:?}",s_b);
 		for j in 0..16 {
 			commit.input(&[s_b[j]]); //<Block> has size [u8;16]
 		}
-        commitments[i] = commit.finish();
+        seed_commitments[i] = commit.finish();
         comm_seed_a = rand::thread_rng().gen::<[u8; 32]>();
         commit = ShaCommitment::new(comm_seed_a);
-        sender.write_bytes(&commitments[i]).unwrap();
+        sender.write_bytes(&seed_commitments[i]).unwrap();
 
     }
     sender.flush();
@@ -209,24 +209,34 @@ pub fn pvc() {
         // garbler call to encode_many()
 
      for i in 0..lambda {
-        let mut rng = AesRng::from_seed(seed_b[i]);
+        let rng = AesRng::from_seed(seed_b[i]);
         let mut ev =
         Evaluator::<UnixChannel, AesRng, ChouOrlandiReceiver>::new(sender.clone(), rng).unwrap();
         let xs = ev.receive_many(&vec![2; 128]).unwrap();
-        if (i == j_hat) {
+        if i == j_hat {
             let party_b_evalwires = ev.encode_many(&party_b_input, &vec![2; 128]).unwrap();
             // only for j_hat, provide GC input 'y'
         } else {
             let ys = ev.encode_many(&vec![0_u16; 128], &vec![2; 128]).unwrap();
             // for all GC's learn the dummy zero wire labels
         }
+        sender.flush();
      }
-     //TODO2: save the transcript hash for the OT called in encode_many(), is that possible here?
+
+     
+     //TODO2: save the transcript hash for the OT called in encode_many()
 
 
     // step (d) : collect commit(input_commit, GC, output_wire) for each 'j'
+        // collect vector of commitments
 
-
+        let mut rcv_gc_commitments: [[u8; 32]; lambda] = [[0; 32]; lambda]; //expecting commitment of seed_b(s)
+        for i in 0..lambda {
+            sender.clone().read_bytes(&mut rcv_gc_commitments[i]).unwrap();
+            //println!("received data: {:?}",commitments[i]);		
+        }
+        sender.flush();
+    
 
 
 
@@ -271,29 +281,51 @@ pub fn pvc() {
 
 
     // step (c) : used the seed_a(s) to initialize all lambda GC
-        // note the OT is seeded by same randomness
-        // garbler: 
+        // note the OT is seeded by same randomness as the garbler
 
     
+    // step (d) : commit both the garbler's input wires as C1
+        // then commit and send c = (GC_j, C1, output_wires)
+
+    
+    //initializing array of commitments sent by party_a to party_b 
+    let mut gc_commitments: [[u8; 32]; lambda] = [[0; 32]; lambda];
+
+    let mut comm_seed_d = rand::thread_rng().gen::<[u8; 32]>(); 
+    let mut commit = ShaCommitment::new(comm_seed_d); //initializing the commitment for step d 
+
     for i in 0..lambda {
-        let mut rng = AesRng::from_seed(seed_a[i]);
+        let rng = AesRng::from_seed(seed_a[i]);
         let mut gb =
             Garbler::<UnixChannel, AesRng, ChouOrlandiSender>::new(receiver.clone(), rng).unwrap();
         let xs = gb.encode_many(&vec![0_u16; 128], &vec![2; 128]).unwrap();
         let ys = gb.receive_many(&vec![2; 128]).unwrap(); // This function calls OT send, OT uses the same rng seeded by 
         //circ.eval(&mut gb, &xs, &ys).unwrap();
+        receiver.flush();
+
+        // step (d)
+        // commiting the garbler's wire labels for each GC_j
+        
+        let evaluator_encoding = gb.evaluator_wires;
+        for i in 0..evaluator_encoding.len() {
+            commit.input(&evaluator_encoding[i].0.as_block().as_ref()); //zero wire
+            commit.input(&evaluator_encoding[i].1.as_block().as_ref()); //one wire
+        }
+
+        gc_commitments[i] = commit.finish();
+        comm_seed_d = rand::thread_rng().gen::<[u8; 32]>();
+        commit = ShaCommitment::new(comm_seed_d);
+        //step (d) sending the commitments
+        receiver.clone().write_bytes(&gc_commitments[i]).unwrap();
+
     }
 
     
+    
     //TODO2: save the transcript hash for the OT called in receive_many(), is that possible here?
     
-    
-    // step (d) : commit both the garbler's input wires as C1
-        // then commit and send c = (GC_j, C1, output_wires)
 
-
-
-    //handle.join.unwrap();
+    //\handle.join.unwrap();
     
 
     }			
