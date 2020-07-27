@@ -13,7 +13,7 @@ use scuttlebutt::{AbstractChannel, Block, SemiHonest};
 pub struct Evaluator<C, RNG, OT> {
     evaluator: Ev<C>,
     channel: C,
-    ot: OT,
+    pub ot: OT,
     rng: RNG,
 }
 
