@@ -20,7 +20,7 @@ use fancy_garbling::{
 pub struct DummyGarbler<C, RNG, OT> {
     garbler: Gb<C, RNG>,
     channel: C,
-    ot: OT,
+    pub ot: OT,
     rng: RNG,
     pub evaluator_wires : Vec<(Wire, Wire)>,
     pub garbler_wires : Vec<(Wire, Wire)>,
