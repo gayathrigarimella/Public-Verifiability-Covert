@@ -9,7 +9,7 @@ mod test_ot;
 mod signature;
 
 fn main() {
-    //test_ot::pvc();
+    test_ot::pvc();
 
 
     //test_ot::test_aes();
@@ -30,7 +30,7 @@ fn main() {
     //test_ot::test_ot();
     //test_ot::test_seeded_ot();
     //test_aes::test_chosen_ev_input();
-    signature::circuit_signature();
+    //signature::circuit_signature();
     //test_aes::reading_circuit();
 }
 

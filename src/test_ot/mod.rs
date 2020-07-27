@@ -2,7 +2,7 @@ pub mod chou_orlandi;
 mod garbler;
 mod evaluator;
 //mod garble;
-
+mod dummy_garbler;
 
 //use ocelot::ot::{ChouOrlandiSender as OTSender,ChouOrlandiReceiver as OTReceiver};
 use scuttlebutt::channel::AbstractChannel;
@@ -19,9 +19,15 @@ use fancy_garbling::{circuit::Circuit, FancyInput, Wire};
 use scuttlebutt::commitment::{Commitment, ShaCommitment};
 //use fancy_garbling::circuit;
 //use crate::garble::{Garbler as Gb, Evaluator as Ev};
-
+use sha2::{Digest,Sha256};
 pub use evaluator::Evaluator;
 pub use garbler::Garbler;
+pub use dummy_garbler::DummyGarbler;
+use crypto::ed25519;
+
+use std::fs::File;
+use std::io::prelude::*;
+
 
 //use Block::rand_block_vec;
 pub type ChouOrlandiSender = chou_orlandi::Sender;
@@ -29,6 +35,7 @@ pub type ChouOrlandiSender = chou_orlandi::Sender;
 pub type ChouOrlandiReceiver = chou_orlandi::Receiver;
 use ChouOrlandiSender as OTSender;
 use ChouOrlandiReceiver as OTReceiver;
+use std::convert::TryInto;
 
 fn rand_block_vec(size: usize) -> Vec<Block> {
 	(0..size).map(|_| rand::random::<Block>()).collect()
@@ -177,13 +184,16 @@ pub fn pvc() {
     input_rng.fill(&mut party_a_input);
     input_rng.fill(&mut party_b_input);
 
+    let mut comm_seed = rand::thread_rng().gen::<[u8; 32]>(); // sha commitment seed
+    let seed: _ = rand::thread_rng().gen::<[u8; 32]>();
+    let (private_key, public_key) = ed25519::keypair(&seed);
+
     let handle = std::thread::spawn(move || {
 		
 	//party_b: sender thread  
 	// Step (a)
     let seed_b = rand_block_vec(lambda); //party_b samples his seeds
-    let mut comm_seed_a = rand::thread_rng().gen::<[u8; 32]>(); // sha commitment seed
-	let mut commit = ShaCommitment::new(comm_seed_a);
+	let mut commit = ShaCommitment::new(comm_seed);
 	let mut seed_commitments: [[u8; 32]; lambda] = [[0; 32]; lambda];
 	for i in 0..lambda {
 		let s_b = seed_b[i].as_ref();
@@ -192,8 +202,8 @@ pub fn pvc() {
 			commit.input(&[s_b[j]]); //<Block> has size [u8;16]
 		}
         seed_commitments[i] = commit.finish();
-        comm_seed_a = rand::thread_rng().gen::<[u8; 32]>();
-        commit = ShaCommitment::new(comm_seed_a);
+        //comm_seed_a = rand::thread_rng().gen::<[u8; 32]>();
+        commit = ShaCommitment::new(comm_seed);
         sender.write_bytes(&seed_commitments[i]).unwrap();
 
     }
@@ -259,6 +269,12 @@ pub fn pvc() {
         }
         //sender.flush();
 
+        let mut rcd_signatures: [[u8; 32]; lambda] = [[0; 32]; lambda];
+        for i in 0..lambda {
+        sender.read_bytes(&mut rcd_signatures[i]).unwrap();
+        println!("received signature {:?}", rcd_signatures[i]);
+    }
+
     });
 
 
@@ -279,7 +295,7 @@ pub fn pvc() {
        
     let seed_a = rand_block_vec(lambda); //sample block-sized <seed_a(s), witness> for OT
     let witness = rand_block_vec(lambda);
-
+    let mut trans: Vec<Vec<u8>> = vec![Vec::new(); lambda];
     let reader = BufReader::new(ot_sender.try_clone().unwrap());
     let writer = BufWriter::new(ot_sender.try_clone().unwrap());
     let mut channel = Channel::new(reader, writer);
@@ -293,9 +309,9 @@ pub fn pvc() {
     	let mut rng = AesRng::from_seed(ot_seed_b);
     	let mut ot = OTSender::init(&mut channel, &mut rng).unwrap();
     	ot.send(&mut channel, &[ot_messages_b[i]], &mut rng).unwrap();
+        trans[i] = ot.transcript.clone();
     }
     //TODO_1: save transcript of the OT in step b as 'trans_j'
-
     receiver.flush();
 
 
@@ -308,32 +324,49 @@ pub fn pvc() {
 
     
     //initializing array of commitments sent by party_a to party_b 
+    const n1: usize = 128;   //  length of P1 input
+    const n3: usize = 128;
+    let mut wire_commitments: [[[[u8;32]; 2]; n1]; lambda] = [[[[0;32]; 2]; n1]; lambda];
     let mut gc_commitments: [[u8; 32]; lambda] = [[0; 32]; lambda];
-
-   
+    let mut gc_hash: [[u8;32]; lambda] = [[0; 32]; lambda];
+    let mut commit : ShaCommitment;
     for i in 0..lambda {
         let mut rng = AesRng::from_seed(seed_a[i]);
-        let mut comm_seed_d = rng.gen::<[u8; 32]>();
-        let mut commit = ShaCommitment::new(comm_seed_d); //deriving randomness from seed_a for commit
         let mut gb =
-            Garbler::<UnixChannel, AesRng, ChouOrlandiSender>::new(receiver.clone(), rng).unwrap();
+            DummyGarbler::<UnixChannel, AesRng, ChouOrlandiSender>::new(receiver.clone(), rng).unwrap();
         let xs = gb.encode_many(&vec![0_u16; 128], &vec![2; 128]).unwrap();
         let ys = gb.receive_many(&vec![2; 128]).unwrap(); // This function calls OT send, OT uses the same rng seeded by 
-        //circ.eval(&mut gb, &xs, &ys).unwrap();
-
+        circ.eval(&mut gb, &xs, &ys).unwrap();
+        gc_hash[i]= gb.gc_hash.finalize().as_slice().try_into().expect("slice with incorrect length");
         receiver.flush();
 
         // step (d)
         // commiting the garbler's wire labels for each (GC_j, comm(A), Z)
         
-        let mut evaluator_encoding = gb.evaluator_wires;
-        println!("evaluator encoding length is {}", evaluator_encoding.len());
-        for i in 0..evaluator_encoding.len() {
+        let mut garbler_encoding = gb.garbler_wires;
+        println!("evaluator encoding length is {}", garbler_encoding.len());
+        for j in 0..garbler_encoding.len() {
 
-            commit.input(&evaluator_encoding[i].0.as_block().as_ref()); //zero wire
-            commit.input(&evaluator_encoding[i].1.as_block().as_ref()); //one wire
+            commit = ShaCommitment::new(comm_seed);
+            commit.input(&garbler_encoding[j].0.as_block().as_ref()); //zero wire
+            wire_commitments[i][j][0] = commit.finish();
+            commit = ShaCommitment::new(comm_seed);
+            commit.input(&garbler_encoding[j].1.as_block().as_ref()); //one wire
+            wire_commitments[i][j][1] = commit.finish();
         }
 
+        //  computing gc_commitments
+        commit = ShaCommitment::new(comm_seed);
+        commit.input(&gc_hash[i]);
+        for j in 0..garbler_encoding.len() {
+            commit.input(&wire_commitments[i][j][0]); 
+            commit.input(&wire_commitments[i][j][1]); 
+        }
+        for j in 0..gb.output_wires.len() {
+            commit.input(&gb.output_wires[j].0.as_ref());
+            commit.input(&gb.output_wires[j].1.as_ref());
+
+        }
         gc_commitments[i] = commit.finish();
         //step (d) sending the commitments
         
@@ -343,13 +376,29 @@ pub fn pvc() {
         
        
     }
-    
+    receiver.flush();
     //TODO2: step (c) save the transcript hash for the OT called in receive_many(), is that possible here?
     //TODO3: step (d) need to commit the c_j(s) = (GC_j, commit(garbler inputs), output wires)
+
+    //  Step 5 - comppute signaturez
+    let file = File::open("circuits/AES-non-expanded.txt").unwrap();
+    let mut buf_reader = BufReader::new(file);
+    for i in 0..lambda {
+        let mut contents = String::new();
+        let mut sign_message: Vec<u8> = Vec::new();
+        buf_reader.read_to_string(&mut contents).unwrap();
+        sign_message = contents.into_bytes(); 
+        //let mut j: &[u8] = i;
+        //sign_message.append(&mut j.into());
+        println!("Sender has ot transcript {} {:?}",i,trans[i]);
+        sign_message.append(&mut trans[i]);
+        let mut sign = ed25519::signature(&sign_message,&private_key);
+        receiver.write_bytes(&mut sign).unwrap();
+    }
 
     //\handle.join.unwrap();
     
 
-    }			
+}			
 
 

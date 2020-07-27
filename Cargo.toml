@@ -18,3 +18,4 @@ scuttlebutt = { git = "https://github.com/GaloisInc/swanky" , features = ["curve
 ocelot = { git = "https://github.com/GaloisInc/swanky" }
 rand = "0.7"
 rust-crypto = "^0.2"
+sha2 = "0.9.1"

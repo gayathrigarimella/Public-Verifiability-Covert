@@ -26,12 +26,24 @@ use curve25519_dalek::{
 };
 use rand::{CryptoRng, Rng};
 use scuttlebutt::{AbstractChannel, Block, Malicious, SemiHonest};
-
+use sha2::{Digest,Sha256};
 /// Oblivious transfer sender.
 pub struct Sender {
     y: Scalar,
     s: RistrettoPoint,
-    rcvd_messages: Vec<u8> // contains the byte string of all the messages received from the Receiver
+    pub transcript: Vec<u8>,
+    pub trans_hash: Vec<u8>
+}
+
+impl Sender {
+
+    fn update_transcript(&mut self, message: &[u8]) {
+        self.transcript.extend_from_slice(message);
+        let mut hasher = Sha256::new();
+        hasher.update(&message);
+        let message_hash = hasher.finalize();
+        self.trans_hash.extend_from_slice(&message_hash);
+    }
 }
 
 
@@ -44,10 +56,18 @@ impl OtSender for Sender {
     ) -> Result<Self, Error> {
         let y = Scalar::random(&mut rng);
         let s = &y * &RISTRETTO_BASEPOINT_TABLE;
-        let rcvd_messages: Vec<u8> = Vec::new();
         channel.write_pt(&s)?;
+        let mut transcript: Vec<u8> = Vec::new();
+        let compressed_point = s.compress();
+        let message: &[u8] = compressed_point.as_bytes();
+        transcript.extend_from_slice(&message);
+        let mut trans_hash: Vec<u8> = Vec::new();
+        let mut hasher = Sha256::new();
+        hasher.update(message);
+        let message_hash = hasher.finalize();
+        trans_hash.extend_from_slice(&message_hash);
         channel.flush()?;
-        Ok(Self { y, s, rcvd_messages})
+        Ok(Self { y, s, transcript, trans_hash})
     }
 
     fn send<C: AbstractChannel, RNG: CryptoRng + Rng>(
@@ -60,7 +80,9 @@ impl OtSender for Sender {
         let ks = (0..inputs.len())
             .map(|i| {
                 let r = channel.read_pt()?;
-                self.rcvd_messages.extend_from_slice(r.compress().as_bytes());
+                let compressed_point = r.compress();
+                let message: &[u8] = compressed_point.as_bytes();
+                self.update_transcript(message);
                 let yr = self.y * r;
                 let k0 = Block::hash_pt(i, &yr);
                 let k1 = Block::hash_pt(i, &(yr - ys));
@@ -71,12 +93,16 @@ impl OtSender for Sender {
             let c0 = k.0 ^ input.0;
             let c1 = k.1 ^ input.1;
             channel.write_block(&c0)?;
+            self.update_transcript(c0.as_ref());
             channel.write_block(&c1)?;
+            self.update_transcript(c1.as_ref());
+            self.transcript.extend_from_slice(c1.as_ref());
         }
         channel.flush()?;
         Ok(())
     }
 }
+
 
 impl std::fmt::Display for Sender {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -87,7 +113,22 @@ impl std::fmt::Display for Sender {
 /// Oblivious transfer receiver.
 pub struct Receiver {
     s: RistrettoBasepointTable,
+    pub transcript: Vec<u8>,
+    pub trans_hash: Vec<u8>
 }
+
+
+impl Receiver {
+
+    fn update_transcript_recv(&mut self, message: &[u8]) {
+        self.transcript.extend_from_slice(message);
+        let mut hasher = Sha256::new();
+        hasher.update(&message);
+        let message_hash = hasher.finalize();
+        self.trans_hash.extend_from_slice(&message_hash);
+    }
+}
+
 
 impl OtReceiver for Receiver {
     type Msg = Block;
@@ -96,9 +137,20 @@ impl OtReceiver for Receiver {
         channel: &mut C,
         _: &mut RNG,
     ) -> Result<Self, Error> {
+        let mut transcript: Vec<u8> = Vec::new();
+        let mut trans_hash: Vec<u8> = Vec::new();
         let s = channel.read_pt()?;
+        let mut transcript: Vec<u8> = Vec::new();
+        let compressed_point = s.compress();
+        let message: &[u8] = compressed_point.as_bytes();
+        transcript.extend_from_slice(&message);
+        let mut trans_hash: Vec<u8> = Vec::new();
+        let mut hasher = Sha256::new();
+        hasher.update(message);
+        let message_hash = hasher.finalize();
+        trans_hash.extend_from_slice(&message_hash);
         let s = RistrettoBasepointTable::create(&s);
-        Ok(Self { s })
+        Ok(Self { s, trans_hash, transcript })
     }
 
     fn receive<C: AbstractChannel, RNG: CryptoRng + Rng>(
@@ -117,6 +169,9 @@ impl OtReceiver for Receiver {
                 let c = if *b { one } else { zero };
                 let r = c + &x * &RISTRETTO_BASEPOINT_TABLE;
                 channel.write_pt(&r)?;
+                let compressed_point = r.compress();
+                let message: &[u8] = compressed_point.as_bytes();
+                self.update_transcript_recv(message);
                 Ok(Block::hash_pt(i, &(&x * &self.s)))
             })
             .collect::<Result<Vec<Block>, Error>>()?;
@@ -126,7 +181,9 @@ impl OtReceiver for Receiver {
             .zip(ks.into_iter())
             .map(|(b, k)| {
                 let c0 = channel.read_block()?;
+                self.update_transcript_recv(c0.as_ref());
                 let c1 = channel.read_block()?;
+                self.update_transcript_recv(c1.as_ref());
                 let c = k ^ if *b { c1 } else { c0 };
                 Ok(c)
             })
@@ -137,6 +194,17 @@ impl OtReceiver for Receiver {
 impl std::fmt::Display for Receiver {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "Chou-Orlandi Receiver")
+    }
+}
+
+impl Receiver {
+
+    fn update_transcript(&mut self, message: &mut [u8]) {
+        self.transcript.extend_from_slice(&message);
+        let mut hasher = Sha256::new();
+        hasher.update(&message);
+        let message_hash = hasher.finalize();
+        self.trans_hash.extend_from_slice(&message_hash);
     }
 }
 

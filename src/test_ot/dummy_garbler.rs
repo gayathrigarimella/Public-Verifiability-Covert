@@ -17,13 +17,14 @@ use fancy_garbling::{
 };
 
 /// Semi-honest garbler.
-pub struct Garbler<C, RNG, OT> {
+pub struct DummyGarbler<C, RNG, OT> {
     garbler: Gb<C, RNG>,
     channel: C,
     ot: OT,
     rng: RNG,
     pub evaluator_wires : Vec<(Wire, Wire)>,
     pub garbler_wires : Vec<(Wire, Wire)>,
+    pub output_wires : Vec<(Block, Block)>,
     current_gate: usize,
     current_output: usize,
     pub gc_hash: Sha256,
@@ -31,14 +32,14 @@ pub struct Garbler<C, RNG, OT> {
 }
                 
 
-impl<C, OT, RNG> std::ops::Deref for Garbler<C, RNG, OT> {
+impl<C, OT, RNG> std::ops::Deref for DummyGarbler<C, RNG, OT> {
     type Target = Gb<C, RNG>;
     fn deref(&self) -> &Self::Target {
         &self.garbler
     }
 }
 
-impl<C, OT, RNG> std::ops::DerefMut for Garbler<C, RNG, OT> {
+impl<C, OT, RNG> std::ops::DerefMut for DummyGarbler<C, RNG, OT> {
     fn deref_mut(&mut self) -> &mut Gb<C, RNG> {
         &mut self.garbler
     }
@@ -48,7 +49,7 @@ impl<
         C: AbstractChannel,
         RNG: CryptoRng + Rng + SeedableRng<Seed = Block>,
         OT: OtSender<Msg = Block> + SemiHonest,
-    > Garbler<C, RNG, OT>
+    > DummyGarbler<C, RNG, OT>
 {
     /// Make a new `Garbler`.
     pub fn new(mut channel: C, mut rng: RNG) -> Result<Self, TwopacError> {
@@ -56,14 +57,16 @@ impl<
         let garbler = Gb::new(channel.clone(), RNG::from_seed(rng.gen()));
         let evaluator_wires: Vec<(Wire, Wire)> = Vec::new();
         let garbler_wires: Vec<(Wire, Wire)> = Vec::new();
+        let output_wires: Vec<(Block, Block)> = Vec::new();
         let gc_hash = Sha256::new();
-        Ok(Garbler {
+        Ok(DummyGarbler {
             garbler,
             channel,
             ot,
             rng,
             evaluator_wires,
             garbler_wires, 
+            output_wires,
             gc_hash,
             deltas: HashMap::new(),
             current_gate:0,
@@ -130,7 +133,7 @@ impl<
         C: AbstractChannel,
         RNG: CryptoRng + Rng + SeedableRng<Seed = Block>,
         OT: OtSender<Msg = Block> + SemiHonest,
-    > FancyInput for Garbler<C, RNG, OT>
+    > FancyInput for DummyGarbler<C, RNG, OT>
 {
     type Item = Wire;
     type Error = TwopacError;
@@ -177,7 +180,7 @@ impl<
     }
 }
 
-impl<C: AbstractChannel, RNG: CryptoRng + Rng, OT> Fancy for Garbler<C, RNG, OT> {
+impl<C: AbstractChannel, RNG: CryptoRng + Rng, OT> Fancy for DummyGarbler<C, RNG, OT> {
     type Item = Wire;
     type Error = GarblerError;
 
@@ -185,7 +188,7 @@ impl<C: AbstractChannel, RNG: CryptoRng + Rng, OT> Fancy for Garbler<C, RNG, OT>
         let zero = Wire::rand(&mut self.rng, q);
         let wire = zero.plus(&self.delta(q).cmul_eq(x));
         self.gc_hash.update(&wire.as_block().as_ref());
-        self.send_wire(&wire)?;
+        //self.send_wire(&wire)?;
         Ok(zero)
     }
 
@@ -313,7 +316,7 @@ impl<C: AbstractChannel, RNG: CryptoRng + Rng, OT> Fancy for Garbler<C, RNG, OT>
         }
 
         for block in gate.iter() {
-            self.channel.write_block(block)?;
+            //self.channel.write_block(block)?;
             self.gc_hash.update(block.as_ref());
         }
         Ok(X.plus_mov(&Y))
@@ -369,7 +372,7 @@ impl<C: AbstractChannel, RNG: CryptoRng + Rng, OT> Fancy for Garbler<C, RNG, OT>
         }
 
         for block in gate.iter() {
-            self.channel.write_block(block)?;
+            //self.channel.write_block(block)?;
             self.gc_hash.update(block.as_ref());
         }
         Ok(C)
@@ -381,19 +384,27 @@ impl<C: AbstractChannel, RNG: CryptoRng + Rng, OT> Fancy for Garbler<C, RNG, OT>
         self.current_output += 1;
         let i = current;
         let D = self.delta(q);
+        let mut temp : (Block, Block) = (Block::default(),Block::default());
         for k in 0..q {
             let block = X.plus(&D.cmul(k)).hash(output_tweak(i, k));
-            self.channel.write_block(&block)?;
+            //self.channel.write_block(&block)?;
             self.gc_hash.update(block.as_ref());
+            if (k == 0) {
+                temp.0 = block;
+            }
+            else  {
+                temp.1 = block;
+            }
         }
+        self.output_wires.append(&mut vec![temp]);
         Ok(None)
     }
 }
 
-impl<C: AbstractChannel, RNG: CryptoRng + Rng, OT> FancyReveal for Garbler<C, RNG, OT> {
+impl<C: AbstractChannel, RNG: CryptoRng + Rng, OT> FancyReveal for DummyGarbler<C, RNG, OT> {
     fn reveal(&mut self, x: &Self::Item) -> Result<u16, Self::Error> {
         self.garbler.reveal(x).map_err(Self::Error::from)
     }
 }
 
-impl<C, RNG, OT> SemiHonest for Garbler<C, RNG, OT> {}
+impl<C, RNG, OT> SemiHonest for DummyGarbler<C, RNG, OT> {}
