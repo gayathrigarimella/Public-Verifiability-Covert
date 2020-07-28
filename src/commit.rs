@@ -8,6 +8,7 @@ use rand::{thread_rng};
 
 use fancy_garbling::{Wire};
 
+
 pub fn test_commit() {
 
 

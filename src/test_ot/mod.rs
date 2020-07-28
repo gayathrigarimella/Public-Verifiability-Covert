@@ -24,6 +24,8 @@ pub use evaluator::Evaluator;
 pub use garbler::Garbler;
 pub use dummy_garbler::DummyGarbler;
 use crypto::ed25519;
+use std::time::Duration;
+use std::thread;
 
 use std::fs::File;
 use std::io::prelude::*;
@@ -44,6 +46,15 @@ fn rand_block_vec(size: usize) -> Vec<Block> {
 fn rand_bool_vec(size: usize) -> Vec<bool> {
 	(0..size).map(|_| rand::random::<bool>()).collect()
 } 
+
+//fn eq_with_nan_eq(a: u8, b: u8) -> bool {
+//    (a.is_nan() && b.is_nan()) || (a == b)
+//}
+
+fn compare(v1: &[u8], v2: &[u8]) -> bool {
+    (v1.len() == v2.len()) && v1.iter().zip(v2).all(|(a,b)| *a == *b)
+} 
+
 
 pub fn test_ot() {
 	let n = 10;
@@ -170,13 +181,16 @@ pub fn pvc() {
     const lambda: usize = 4;		//	replicating factor 
 
     let circ = Circuit::parse("circuits/AES-non-expanded.txt").unwrap(); //we are garbling AES
-
+    let circ_ = circ.clone();
+    let circ1 = circ.clone();
+    let circ2 = circ.clone();
     //circ.print_info().unwrap(); let circ_ = circ.clone(); 
-	
-    let (mut receiver, mut sender) = unix_channel_pair();
+    let (mut receiver, mut sender) = unix_channel_pair();	
+    let (mut receiver1, mut sender1) = unix_channel_pair();
     let (mut commit_receiver, mut commit_sender) = unix_channel_pair();
     let (ot_sender, ot_receiver) = UnixStream::pair().unwrap();
-    
+    let (mut gc_sender, mut gc_receiver) = unix_channel_pair();
+  
     //We sample random inputs for computing the circuit for both parties
     let mut input_rng = thread_rng();
     let mut party_a_input = [0u16; 128];
@@ -203,6 +217,8 @@ pub fn pvc() {
        
     let seed_a = rand_block_vec(lambda); //sample block-sized <seed_a(s), witness> for OT
     let witness = rand_block_vec(lambda);
+    let seed_a2 = seed_a.clone();
+    let witness2 = witness.clone();
     let mut trans: Vec<Vec<u8>> = vec![Vec::new(); lambda];
     let mut trans_hash: Vec<Vec<u8>> = vec![Vec::new(); lambda];
     let reader = BufReader::new(ot_sender.try_clone().unwrap());
@@ -246,7 +262,7 @@ pub fn pvc() {
             DummyGarbler::<UnixChannel, AesRng, ChouOrlandiSender>::new(receiver.clone(), rng.clone()).unwrap();
         let xs = gb.encode_many(&vec![0_u16; 128], &vec![2; 128]).unwrap();
         let ys = gb.receive_many(&vec![2; 128]).unwrap(); // This function calls OT send, OT uses the same rng seeded by 
-        circ.eval(&mut gb, &xs, &ys).unwrap();
+        circ_.eval(&mut gb, &xs, &ys).unwrap();
         gc_hash[i]= gb.gc_hash.finalize().as_slice().try_into().expect("slice with incorrect length");
         trans_hash[i] = gb.ot.trans_hash;
         //println!("CHECK CHECK {:?}", x);
@@ -291,8 +307,6 @@ pub fn pvc() {
        
     }
     receiver.flush();
-    //TODO2: step (c) save the transcript hash for the OT called in receive_many(), is that possible here?
-    //TODO3: step (d) need to commit the c_j(s) = (GC_j, commit(garbler inputs), output wires)
 
     //  Step 5 - compute signatures
     let file = File::open("circuits/AES-non-expanded.txt").unwrap();
@@ -308,10 +322,38 @@ pub fn pvc() {
         sign_message.append(&mut trans[i]);
         sign_message.append(&mut trans_hash[i].clone());
         let mut sign = ed25519::signature(&sign_message,&private_key);
-        receiver.write_bytes(&mut sign).unwrap();
+        receiver.write_bytes(&mut sign);
+        receiver.flush();
     }
-    receiver.flush();
-	
+    let mut block: [u8;16] = [0;16];
+    //receiver1.read_bytes(&mut block).unwrap();
+    //receiver1.flush();
+    let j_hat = 0;      //  need to extract this from the above block
+
+    let mut str_eq_flag : bool = true; 
+    let mut rcv_seeds : [[u8;16];lambda] = [[0;16];lambda]; 
+    for i in 0..lambda {
+        //receiver1.read_bytes(&mut rcv_seeds[i]).unwrap();
+        if ( (i != j_hat && !compare(&rcv_seeds[i],&seed_a2[i].as_ref())) 
+            || (i == j_hat ) && compare(&rcv_seeds[i],&witness2[i].as_ref())) {
+            str_eq_flag = false;
+        }
+    }
+
+    // Step 8
+
+    let mut rng = AesRng::from_seed(seed_a2[j_hat]);
+    let mut gb =
+        Garbler::<UnixChannel, AesRng, ChouOrlandiSender>::new(gc_receiver.clone(), rng).unwrap();
+    //let xs = gb.encode_many(&vec![0_u16; 128], &vec![2; 128]).unwrap();
+    //let ys = gb.receive_many(&vec![2; 128]).unwrap(); // This function calls OT send, OT uses the same rng seeded by 
+    //circ1.eval(&mut gb, &xs, &ys).unwrap();
+
+    // send wire label commitments and sha seed
+    let b1  = Block::try_from_slice(&comm_seed_a[j_hat][0..16]);
+    let b2  = Block::try_from_slice(&comm_seed_a[j_hat][16..32]);
+    //receiver1.write_bytes(&comm_seed_a[j_hat]);
+
 
     });
 
@@ -351,6 +393,7 @@ pub fn pvc() {
         rcv_seed_a.append(&mut vec![temp]);
         //println!("lambda:{}, ot-received: {:?}", j_hat, result);
     }
+    let mut rcv_seed_a2 = rcv_seed_a.clone();
 
     //TODO_1: save transcript of the OT in step b as 'trans_j'
 
@@ -506,18 +549,37 @@ pub fn pvc() {
         // collect vector of commitments
 
         let mut sim_rcv_gc_commitments: [[u8; 32]; lambda] = [[0; 32]; lambda]; //expecting commitment of seed_b(s)
+        let mut sim_check: bool = true;
         for i in 0..lambda {
             sim_commit_sender.read_bytes(&mut sim_rcv_gc_commitments[i]).unwrap();
-            //if (i != j_hat) {
-            //println!("compare simulation to original: {:?} {:?} {:?} {:?}",rcv_gc_commitments[i][0], sim_rcv_gc_commitments[i][0],trans_hash[i][0],sim_trans_hash[i][0]);      
-            //}
+            if ( (i != j_hat) && ( !compare(&rcv_gc_commitments[i],&sim_rcv_gc_commitments[i]) || !compare(&trans_hash[i],&sim_trans_hash[i]))) {     
+                sim_check = false;
+            }
+            //println!("Sim check {}", sim_check);
         }
-
-
-
-
     handle2.join().unwrap();
-    handle.join().unwrap();
+
+    //  Step 7
+    let mut block: [u8; 16] = [0;16];
+    block[j_hat] = 1;
+    sender1.flush();
+    //println!("j_hat {}", j_hat);
+    sender1.write_bytes(&block).unwrap();
+    for i in 0..lambda {
+        sender1.write_bytes(&rcv_seed_a2[i].as_ref()).unwrap();
+    }
+    //sender1.flush();
+
+    // Step 8 
+    let rng = AesRng::from_seed(seed_b[j_hat]);
+    let mut ev =
+    Evaluator::<UnixChannel, AesRng, ChouOrlandiReceiver>::new(gc_sender.clone(), rng).unwrap();
+    //let xs = ev.receive_many(&vec![2; 128]).unwrap();
+    //let ys = ev.encode_many(&party_b_input, &vec![2; 128]).unwrap();
+    //circ2.eval(&mut ev, &xs, &ys).unwrap();  
+    //handle.join().unwrap();
+
+
 
 }			
 
