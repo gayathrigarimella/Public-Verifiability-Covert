@@ -306,7 +306,7 @@ pub fn pvc() {
         
        
     }
-    receiver.flush();
+    commit_receiver.flush();
 
     //  Step 5 - compute signatures
     let file = File::open("circuits/AES-non-expanded.txt").unwrap();
@@ -322,26 +322,29 @@ pub fn pvc() {
         sign_message.append(&mut trans[i]);
         sign_message.append(&mut trans_hash[i].clone());
         let mut sign = ed25519::signature(&sign_message,&private_key);
+        //println!("Signature {}",sign.len() );
         receiver.write_bytes(&mut sign);
         receiver.flush();
     }
-    let mut block: [u8;16] = [0;16];
-    //receiver1.read_bytes(&mut block).unwrap();
-    //receiver1.flush();
-    let j_hat = 0;      //  need to extract this from the above block
+
+    let j_hat = receiver.read_usize().unwrap();
+    //println!("after {}",j_hat );
+    receiver.flush();
 
     let mut str_eq_flag : bool = true; 
     let mut rcv_seeds : [[u8;16];lambda] = [[0;16];lambda]; 
     for i in 0..lambda {
-        //receiver1.read_bytes(&mut rcv_seeds[i]).unwrap();
-        if ( (i != j_hat && !compare(&rcv_seeds[i],&seed_a2[i].as_ref())) 
-            || (i == j_hat ) && compare(&rcv_seeds[i],&witness2[i].as_ref())) {
+        receiver.read_bytes(&mut rcv_seeds[i]).unwrap();
+        if ( (i != j_hat && !compare(&rcv_seeds[i].clone(),&seed_a2[i].as_ref())) 
+            || (i == j_hat ) && !compare(&rcv_seeds[i].clone(),&witness2[i].as_ref())) {
             str_eq_flag = false;
         }
     }
+    receiver.flush();
+    //println!("String flag {}", str_eq_flag);
 
     // Step 8
-
+/*
     let mut rng = AesRng::from_seed(seed_a2[j_hat]);
     let mut gb =
         Garbler::<UnixChannel, AesRng, ChouOrlandiSender>::new(gc_receiver.clone(), rng).unwrap();
@@ -352,9 +355,10 @@ pub fn pvc() {
     // send wire label commitments and sha seed
     let b1  = Block::try_from_slice(&comm_seed_a[j_hat][0..16]);
     let b2  = Block::try_from_slice(&comm_seed_a[j_hat][16..32]);
+    let mut b: Vec<Block> = Vec::new();
     //receiver1.write_bytes(&comm_seed_a[j_hat]);
 
-
+*/
     });
 
     //party_b: sender thread  
@@ -439,12 +443,13 @@ pub fn pvc() {
             commit_sender.read_bytes(&mut rcv_gc_commitments[i]).unwrap();
             println!("received data: {:?}",rcv_gc_commitments[i]);      
         }
-        //sender.flush();
+        commit_sender.flush();
 
-        let mut rcd_signatures: [[u8; 32]; lambda] = [[0; 32]; lambda];
+        let mut rcd_signatures: [[u8; 64]; lambda] = [[0; 64]; lambda];
         for i in 0..lambda {
         sender.read_bytes(&mut rcd_signatures[i]).unwrap();
-        println!("received signature {:?}", rcd_signatures[i]);
+        println!("received signature {}", i);
+        sender.flush();
     }
 
     // Step 6 - simulating P_A from step 3 and 4
@@ -483,7 +488,7 @@ pub fn pvc() {
         sim_comm_seed_a[i] = rng2.gen::<[u8; 32]>();
 
         let mut garbler_encoding = gb.garbler_wires;
-        println!("evaluator encoding length is {}", garbler_encoding.len());
+        println!("sim evaluator encoding length is {}", garbler_encoding.len());
         for j in 0..garbler_encoding.len() {
 
             commit = ShaCommitment::new(sim_comm_seed_a[i]);
@@ -511,9 +516,9 @@ pub fn pvc() {
         
        
         sim_commit_receiver.write_bytes(&gc_commitments[i]).unwrap();
-        println!("send data: {:?}",gc_commitments[i]);
+        println!("sim send data: {:?}",gc_commitments[i]);
     }
-    sim_receiver.flush();
+    sim_commit_receiver.flush();
 
     });
 
@@ -524,23 +529,23 @@ pub fn pvc() {
         let mut ev =
         Evaluator::<UnixChannel, AesRng, ChouOrlandiReceiver>::new(sim_sender.clone(), rng).unwrap();
         let xs = ev.receive_many(&vec![2; 128]).unwrap();
-        println!("ev side: actual encoding of garbler {:?}", xs[10]);
+        println!("sim ev side: actual encoding of garbler {:?}", xs[10]);
         if i == j_hat {
             sim_party_b_evalwires = ev.encode_many(&party_b_input, &vec![2; 128]).unwrap();
-            println!("ev side: actual encoding of evaluator {:?}", party_b_evalwires[10]);
+            println!("sim ev side: actual encoding of evaluator {:?}", party_b_evalwires[10]);
             //println!("party_b_evalwires: {}", party_b_evalwires[10]);
             // only for j_hat, provide GC input 'y'
         } else {
             let ys = ev.encode_many(&vec![0_u16; 128], &vec![2; 128]).unwrap();
-            println!("ev side: actual encoding of evaluator {:?}", ys[10]);
+            println!("sim ev side: actual encoding of evaluator {:?}", ys[10]);
             // for all GC's learn the dummy zero wire labels
         }
         sim_trans_hash[i] = ev.ot.trans_hash.clone();    
         sim_sender.flush();
      }
 
-        println!("ev side: party_b_eval_wires {}", sim_party_b_evalwires.len());
-        println!("ev side: actual encoding of evaluator {:?}", sim_party_b_evalwires[10]);
+        println!("sim ev side: party_b_eval_wires {}", sim_party_b_evalwires.len());
+        println!("sim ev side: actual encoding of evaluator {:?}", sim_party_b_evalwires[10]);
      
      //TODO2: save the transcript hash for the OT called in encode_many()
 
@@ -555,21 +560,22 @@ pub fn pvc() {
             if ( (i != j_hat) && ( !compare(&rcv_gc_commitments[i],&sim_rcv_gc_commitments[i]) || !compare(&trans_hash[i],&sim_trans_hash[i]))) {     
                 sim_check = false;
             }
-            //println!("Sim check {}", sim_check);
+            println!("Sim check {}", sim_check);
         }
-    handle2.join().unwrap();
+    //handle2.join().unwrap();
+
+
 
     //  Step 7
-    let mut block: [u8; 16] = [0;16];
-    block[j_hat] = 1;
-    sender1.flush();
-    //println!("j_hat {}", j_hat);
-    sender1.write_bytes(&block).unwrap();
-    for i in 0..lambda {
-        sender1.write_bytes(&rcv_seed_a2[i].as_ref()).unwrap();
-    }
-    //sender1.flush();
+    sender.write_usize(j_hat).unwrap();
+    sender.flush();
 
+    for i in 0..lambda {
+        sender.write_bytes(&rcv_seed_a2[i].as_ref()).unwrap();
+        //println!("sent: {:?}", rcv_seed_a2[i].as_ref());
+    }
+    sender.flush();
+/*
     // Step 8 
     let rng = AesRng::from_seed(seed_b[j_hat]);
     let mut ev =
@@ -577,8 +583,8 @@ pub fn pvc() {
     //let xs = ev.receive_many(&vec![2; 128]).unwrap();
     //let ys = ev.encode_many(&party_b_input, &vec![2; 128]).unwrap();
     //circ2.eval(&mut ev, &xs, &ys).unwrap();  
-    //handle.join().unwrap();
-
+    handle.join().unwrap();
+*/
 
 
 }			
