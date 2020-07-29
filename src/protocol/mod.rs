@@ -19,13 +19,13 @@ use fancy_garbling::{circuit::Circuit, FancyInput, Wire};
 use scuttlebutt::commitment::{Commitment, ShaCommitment};
 //use fancy_garbling::circuit;
 //use crate::garble::{Garbler as Gb, Evaluator as Ev};
-use sha2::{Digest,Sha256};
+use sha2::{Digest};
 pub use evaluator::Evaluator;
 pub use garbler::Garbler;
 pub use dummy_garbler::DummyGarbler;
 use crypto::ed25519;
-use std::time::Duration;
-use std::thread;
+//use std::time::Duration;
+//use std::thread;
 
 use std::fs::File;
 use std::io::prelude::*;
@@ -43,135 +43,13 @@ fn rand_block_vec(size: usize) -> Vec<Block> {
 	(0..size).map(|_| rand::random::<Block>()).collect()
 } 
 
-fn rand_bool_vec(size: usize) -> Vec<bool> {
+/*fn rand_bool_vec(size: usize) -> Vec<bool> {
 	(0..size).map(|_| rand::random::<bool>()).collect()
-} 
-
-//fn eq_with_nan_eq(a: u8, b: u8) -> bool {
-//    (a.is_nan() && b.is_nan()) || (a == b)
-//}
+} */
 
 fn compare(v1: &[u8], v2: &[u8]) -> bool {
     (v1.len() == v2.len()) && v1.iter().zip(v2).all(|(a,b)| *a == *b)
 } 
-
-
-pub fn test_ot() {
-	let n = 10;
-	let m0s = rand_block_vec(n);
-        let m1s = rand_block_vec(n);
-        let bs = rand_bool_vec(n);
-        //let m0s_ = m0s.clone();
-        //let m1s_ = m1s.clone();
-        let (sender, receiver) = UnixStream::pair().unwrap();
-        let handle = std::thread::spawn(move || {
-            let mut rng = AesRng::new();
-            let reader = BufReader::new(sender.try_clone().unwrap());
-            let writer = BufWriter::new(sender);
-            let mut channel = Channel::new(reader, writer);
-            let mut ot = OTSender::init(&mut channel, &mut rng).unwrap();
-            let ms = m0s
-                .into_iter()
-                .zip(m1s.into_iter())
-                .collect::<Vec<(Block, Block)>>();
-             println!("{:?}", ms);
-            ot.send(&mut channel, &ms, &mut rng).unwrap();
-        });
-        let mut rng = AesRng::new();
-        let reader = BufReader::new(receiver.try_clone().unwrap());
-        let writer = BufWriter::new(receiver);
-        let mut channel = Channel::new(reader, writer);
-        let mut ot = OTReceiver::init(&mut channel, &mut rng).unwrap();
-        let result = ot.receive(&mut channel, &bs, &mut rng).unwrap();
-        println!("{:?}", result);
-        handle.join().unwrap();
-}
-
-
-pub fn test_seeded_ot() {
-	let n = 10;
-	let m0s = rand_block_vec(n);
-        let m1s = rand_block_vec(n);
-        let bs = rand_bool_vec(n);
-        //let m0s_ = m0s.clone();
-        //let m1s_ = m1s.clone();
-        let (sender, receiver) = UnixStream::pair().unwrap();
-        let handle = std::thread::spawn(move || {
-            //let mut rng = AesRng::new();
-            let mut rng2 = thread_rng(); //
-            let random_block: Block = rng2.gen::<Block>();
-            let mut rng = AesRng::from_seed(random_block); //seeded rng generation
-            let reader = BufReader::new(sender.try_clone().unwrap());
-            let writer = BufWriter::new(sender);
-            let mut channel = Channel::new(reader, writer);
-            let mut ot = OTSender::init(&mut channel, &mut rng).unwrap();
-            let ms = m0s
-                .into_iter()
-                .zip(m1s.into_iter())
-                .collect::<Vec<(Block, Block)>>();
-             println!("{:?}", ms);
-            ot.send(&mut channel, &ms, &mut rng).unwrap();
-        });
-        let mut rng = AesRng::new(); //seeded rng generation
-        /*let mut rng2 = thread_rng(); //
-        let random_block: Block = rng2.gen::<Block>();
-        let mut rng = AesRng::from_seed(random_block); */
-        let reader = BufReader::new(receiver.try_clone().unwrap());
-        let writer = BufWriter::new(receiver);
-        let mut channel = Channel::new(reader, writer);
-        let mut ot = OTReceiver::init(&mut channel, &mut rng).unwrap();
-        let result = ot.receive(&mut channel, &bs, &mut rng).unwrap();
-        println!("{:?}", result);
-        handle.join().unwrap();
-}
-
-pub fn test_aes() {
-    let circ = Circuit::parse("circuits/AES-non-expanded.txt").unwrap();
-
-    circ.print_info().unwrap();
-
-    let circ_ = circ.clone();
-    let (sender, receiver) = unix_channel_pair();
-    let handle = std::thread::spawn(move || {
-        let rng = AesRng::new();
-        let mut gb =
-            Garbler::<UnixChannel, AesRng, ChouOrlandiSender>::new(sender, rng).unwrap();
-        let xs = gb.encode_many(&vec![0_u16; 128], &vec![2; 128]).unwrap();
-        let ys = gb.receive_many(&vec![2; 128]).unwrap();
-        circ_.eval(&mut gb, &xs, &ys).unwrap();
-
-        let evaluator_encoding = gb.evaluator_wires;
-        let garbler_encoding = gb.garbler_wires;
-
-        println!("actual encoding of garbler {:?}", xs[10]);
-        println!("test-aes, garbler's input wires {:?}", garbler_encoding[10]);
-
-        println!("actual encoding of evaluator {:?}", ys[10]);
-        println!("test-aes, garbler's input wires {:?}", evaluator_encoding[10]);
-    });
-        
-        
-    let rng = AesRng::new();
-    let mut ev =
-        Evaluator::<UnixChannel, AesRng, ChouOrlandiReceiver>::new(receiver, rng).unwrap();
-    let xs = ev.receive_many(&vec![2; 128]).unwrap();
-    let ys = ev.encode_many(&vec![0_u16; 128], &vec![2; 128]).unwrap();
-
-       /* let garbler_encoding = gb.garbler_wires;
-        let evaluator_encoding = gb.evaluator_wires;
-
-
-        println!("actual encoding of garbler {:?}", xs[10]);
-        println!("test-aes, garbler's input wires {:?}", garbler_encoding[10]);
-
-        println!("actual encoding of evaluator {:?}", ys[10]);
-        println!("test-aes, garbler's input wires {:?}", evaluator_encoding[10]);*/
-
-    println!("ev side: actual encoding of garbler {:?}", xs[10]);
-    println!("ev side: actual encoding of evaluator {:?}", ys[10]);
-    circ.eval(&mut ev, &xs, &ys).unwrap();
-    handle.join().unwrap();
-}
 
 
 
@@ -187,10 +65,10 @@ pub fn pvc() {
     let circ2 = circ.clone();
     //circ.print_info().unwrap(); let circ_ = circ.clone(); 
     let (mut receiver, mut sender) = unix_channel_pair();	
-    let (mut receiver1, mut sender1) = unix_channel_pair();
+    //let (mut receiver1, mut sender1) = unix_channel_pair();
     let (mut commit_receiver, mut commit_sender) = unix_channel_pair();
     let (ot_sender, ot_receiver) = UnixStream::pair().unwrap();
-    let (mut gc_sender, mut gc_receiver) = unix_channel_pair();
+    //let (mut gc_sender, mut gc_receiver) = unix_channel_pair();
   
     //We sample random inputs for computing the circuit for both parties
     let mut input_rng = thread_rng();
@@ -323,8 +201,8 @@ pub fn pvc() {
         sign_message.append(&mut trans_hash[i].clone());
         let mut sign = ed25519::signature(&sign_message,&private_key);
         //println!("Signature {}",sign.len() );
-        receiver.write_bytes(&mut sign);
-        receiver.flush();
+        receiver.write_bytes(&mut sign).unwrap();
+        receiver.flush().unwrap();
     }
 
     let j_hat = receiver.read_usize().unwrap();
@@ -335,12 +213,12 @@ pub fn pvc() {
     let mut rcv_seeds : [[u8;16];lambda] = [[0;16];lambda]; 
     for i in 0..lambda {
         receiver.read_bytes(&mut rcv_seeds[i]).unwrap();
-        if ( (i != j_hat && !compare(&rcv_seeds[i].clone(),&seed_a2[i].as_ref())) 
-            || (i == j_hat ) && !compare(&rcv_seeds[i].clone(),&witness2[i].as_ref())) {
-            str_eq_flag = false;
+        if (i != j_hat && !compare(&rcv_seeds[i].clone(),&seed_a2[i].as_ref())) 
+            || (i == j_hat ) && !compare(&rcv_seeds[i].clone(),&witness2[i].as_ref()) {
+            //str_eq_flag = false;
         }
     }
-    receiver.flush();
+    receiver.flush().unwrap();
     //println!("String flag {}", str_eq_flag);
 
     // Step 8
@@ -401,7 +279,7 @@ pub fn pvc() {
         rcv_seed_a.append(&mut vec![temp]);
         //println!("lambda:{}, ot-received: {:?}", j_hat, result);
     }
-    let mut rcv_seed_a2 = rcv_seed_a.clone();
+    let rcv_seed_a2 = rcv_seed_a.clone();
 
     //TODO_1: save transcript of the OT in step b as 'trans_j'
 
@@ -430,7 +308,7 @@ pub fn pvc() {
         }
         trans_hash[i] = ev.ot.trans_hash;
         
-        sender.flush();
+        sender.flush().unwrap();
      }
 
         println!("ev side: party_b_eval_wires {}", party_b_evalwires.len());
@@ -447,13 +325,13 @@ pub fn pvc() {
             commit_sender.read_bytes(&mut rcv_gc_commitments[i]).unwrap();
             println!("received data: {:?}",rcv_gc_commitments[i]);      
         }
-        commit_sender.flush();
+        commit_sender.flush().unwrap();
 
         let mut rcd_signatures: [[u8; 64]; lambda] = [[0; 64]; lambda];
         for i in 0..lambda {
         sender.read_bytes(&mut rcd_signatures[i]).unwrap();
         println!("received signature {}", i);
-        sender.flush();
+        sender.flush().unwrap();
     }
 
     // Step 6 - simulating P_A from step 3 and 4
@@ -461,7 +339,7 @@ pub fn pvc() {
 
     let (mut sim_receiver, mut sim_sender) = unix_channel_pair();
     let (mut sim_commit_receiver, mut sim_commit_sender) = unix_channel_pair();
-    let (sim_ot_sender, sim_ot_receiver) = UnixStream::pair().unwrap();
+    //let (sim_ot_sender, sim_ot_receiver) = UnixStream::pair().unwrap();
     let mut sim_trans_hash: Vec<Vec<u8>> = vec![Vec::new(); lambda];
     //let mut trans_hash = trans_hash.clone();
     let handle2 = std::thread::spawn(move || {
@@ -470,7 +348,7 @@ pub fn pvc() {
     let circ2 = Circuit::parse("circuits/AES-non-expanded.txt").unwrap(); //we are garbling AES
     let seed_a = rcv_seed_a.clone();
     const n1: usize = 128;   //  length of P1 input
-    const n3: usize = 128;
+    //const n3: usize = 128;
     let mut wire_commitments: [[[[u8;32]; 2]; n1]; lambda] = [[[[0;32]; 2]; n1]; lambda];
     let mut gc_commitments: [[u8; 32]; lambda] = [[0; 32]; lambda];
     let mut gc_hash: [[u8;32]; lambda] = [[0; 32]; lambda];
@@ -486,12 +364,12 @@ pub fn pvc() {
         circ2.eval(&mut gb, &xs, &ys).unwrap();
         gc_hash[i]= gb.gc_hash.finalize().as_slice().try_into().expect("slice with incorrect length");
 
-        sim_receiver.flush();
+        sim_receiver.flush().unwrap();
         // step (d)
         // commiting the garbler's wire labels for each (GC_j, comm(A), Z)
         sim_comm_seed_a[i] = rng2.gen::<[u8; 32]>();
 
-        let mut garbler_encoding = gb.garbler_wires;
+        let garbler_encoding = gb.garbler_wires;
         println!("sim evaluator encoding length is {}", garbler_encoding.len());
         for j in 0..garbler_encoding.len() {
 
@@ -522,7 +400,7 @@ pub fn pvc() {
         sim_commit_receiver.write_bytes(&gc_commitments[i]).unwrap();
         println!("sim send data: {:?}",gc_commitments[i]);
     }
-    sim_commit_receiver.flush();
+    sim_commit_receiver.flush().unwrap();
 
     });
 
@@ -545,7 +423,7 @@ pub fn pvc() {
             // for all GC's learn the dummy zero wire labels
         }
         sim_trans_hash[i] = ev.ot.trans_hash.clone();    
-        sim_sender.flush();
+        sim_sender.flush().unwrap();
      }
 
         println!("sim ev side: party_b_eval_wires {}", sim_party_b_evalwires.len());
@@ -561,13 +439,13 @@ pub fn pvc() {
         let mut sim_check: bool = true;
         for i in 0..lambda {
             sim_commit_sender.read_bytes(&mut sim_rcv_gc_commitments[i]).unwrap();
-            if ( (i != j_hat) && ( !compare(&rcv_gc_commitments[i],&sim_rcv_gc_commitments[i]) || !compare(&trans_hash[i],&sim_trans_hash[i]))) {     
+            if (i != j_hat) && ( !compare(&rcv_gc_commitments[i],&sim_rcv_gc_commitments[i]) || !compare(&trans_hash[i],&sim_trans_hash[i])) {     
                 sim_check = false;
             }
         }
     //handle2.join().unwrap();
 
-        if (!sim_check) {
+        if !sim_check {
             println!("Simulation check fails. Output cheating certificate");
         }
 
@@ -589,22 +467,22 @@ pub fn pvc() {
     let ys = ev.encode_many(&party_b_input, &vec![2; 128]).unwrap();
     circ2.eval(&mut ev, &xs, &ys).unwrap(); 
     let mut sha_seed : [u8;32] = [0;32]; 
-    sender.read_bytes(&mut sha_seed);
+    sender.read_bytes(&mut sha_seed).unwrap();
     //println!("sha seed received {:?}",sha_seed );
     let mut wire_commitments: [[[u8;32]; 2];n1] = [[[0;32]; 2];n1];
     for j in 0..n1 {
-            sender.read_bytes(&mut wire_commitments[j][0]);  
-            sender.read_bytes(&mut wire_commitments[j][1]);   
+            sender.read_bytes(&mut wire_commitments[j][0]).unwrap();  
+            sender.read_bytes(&mut wire_commitments[j][1]).unwrap();   
     }
 
     // check if the commitments are correct
-    let mut commit_check = true;
+    //let commit_check = true;
     for i in 0..n1 {
         let mut commit = ShaCommitment::new(sha_seed);
         commit.input(&xs[i].as_block().as_ref()); //zero wire
         let commitment1 = commit.finish();
 
-        if (!compare(&commitment1,&wire_commitments[i][0]) && !compare(&commitment1,&wire_commitments[i][1])) {
+        if !compare(&commitment1,&wire_commitments[i][0]) && !compare(&commitment1,&wire_commitments[i][1]) {
             println!("commitment check fails for wires {}", i);
         }
     }
@@ -627,7 +505,7 @@ pub fn pvc() {
     }
     let commitment2 = commit.finish();
     
-    if (!compare(&commitment2,&rcv_gc_commitments[j_hat])) {
+    if !compare(&commitment2,&rcv_gc_commitments[j_hat]) {
             println!("commitment check fails for c ");
     }
 

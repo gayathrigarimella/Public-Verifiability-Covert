@@ -4,7 +4,7 @@
 // Copyright © 2019 Galois, Inc.
 // See LICENSE for licensing information.
 use fancy_garbling::{
-    util::{output_tweak, tweak, tweak2, RngExt},
+    util::{output_tweak, tweak, tweak2},
 };
 use fancy_garbling::{errors::TwopacError, Evaluator as Ev, Fancy, FancyInput, FancyReveal, Wire,HasModulus};
 use ocelot::ot::Receiver as OtReceiver;
