@@ -142,7 +142,7 @@ pub fn pvc() {
                 .expect("slice with incorrect length");
             trans_hash[i] = gb.ot.trans_hash;
             //println!("CHECK CHECK {:?}", x);
-            receiver.flush();
+            receiver.flush().unwrap();
 
             // step (d)
             // commiting the garbler's wire labels for each (GC_j, comm(A), Z)
