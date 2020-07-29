@@ -388,7 +388,7 @@ impl<C: AbstractChannel, RNG: CryptoRng + Rng, OT> Fancy for DummyGarbler<C, RNG
         for k in 0..q {
             let block = X.plus(&D.cmul(k)).hash(output_tweak(i, k));
             //self.channel.write_block(&block)?;
-            self.gc_hash.update(block.as_ref());
+            //self.gc_hash.update(block.as_ref());
             if (k == 0) {
                 temp.0 = block;
             }

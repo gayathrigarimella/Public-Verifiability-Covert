@@ -177,7 +177,8 @@ pub fn test_aes() {
 
 pub fn pvc() {
 	//	kappa = 128, lambda = 4
-
+    const n1: usize = 128;   //  length of P1 input
+    const n3: usize = 128;
     const lambda: usize = 4;		//	replicating factor 
 
     let circ = Circuit::parse("circuits/AES-non-expanded.txt").unwrap(); //we are garbling AES
@@ -249,8 +250,6 @@ pub fn pvc() {
 
     
     //initializing array of commitments sent by party_a to party_b 
-    const n1: usize = 128;   //  length of P1 input
-    const n3: usize = 128;
     let mut wire_commitments: [[[[u8;32]; 2]; n1]; lambda] = [[[[0;32]; 2]; n1]; lambda];
     let mut gc_commitments: [[u8; 32]; lambda] = [[0; 32]; lambda];
     let mut gc_hash: [[u8;32]; lambda] = [[0; 32]; lambda];
@@ -283,6 +282,7 @@ pub fn pvc() {
             commit = ShaCommitment::new(comm_seed_a[i]);
             commit.input(&garbler_encoding[j].1.as_block().as_ref()); //one wire
             wire_commitments[i][j][1] = commit.finish();
+
         }
 
         //  computing gc_commitments
@@ -344,21 +344,25 @@ pub fn pvc() {
     //println!("String flag {}", str_eq_flag);
 
     // Step 8
-/*
+
     let mut rng = AesRng::from_seed(seed_a2[j_hat]);
     let mut gb =
-        Garbler::<UnixChannel, AesRng, ChouOrlandiSender>::new(gc_receiver.clone(), rng).unwrap();
-    //let xs = gb.encode_many(&vec![0_u16; 128], &vec![2; 128]).unwrap();
-    //let ys = gb.receive_many(&vec![2; 128]).unwrap(); // This function calls OT send, OT uses the same rng seeded by 
-    //circ1.eval(&mut gb, &xs, &ys).unwrap();
+        Garbler::<UnixChannel, AesRng, ChouOrlandiSender>::new(receiver.clone(), rng).unwrap();
+    let xs = gb.encode_many(&vec![0_u16; 128], &vec![2; 128]).unwrap();
+    let ys = gb.receive_many(&vec![2; 128]).unwrap(); // This function calls OT send, OT uses the same rng seeded by 
+    circ1.eval(&mut gb, &xs, &ys).unwrap();
+
 
     // send wire label commitments and sha seed
-    let b1  = Block::try_from_slice(&comm_seed_a[j_hat][0..16]);
-    let b2  = Block::try_from_slice(&comm_seed_a[j_hat][16..32]);
-    let mut b: Vec<Block> = Vec::new();
-    //receiver1.write_bytes(&comm_seed_a[j_hat]);
+    //println!("sent seed {:?}", comm_seed_a[j_hat]);
+    receiver.write_bytes(&comm_seed_a[j_hat]);
 
-*/
+    for j in 0..n1 {
+            receiver.write_bytes(&wire_commitments[j_hat][j][0]);  
+            receiver.write_bytes(&wire_commitments[j_hat][j][1]);   
+    }
+
+
     });
 
     //party_b: sender thread  
@@ -560,11 +564,12 @@ pub fn pvc() {
             if ( (i != j_hat) && ( !compare(&rcv_gc_commitments[i],&sim_rcv_gc_commitments[i]) || !compare(&trans_hash[i],&sim_trans_hash[i]))) {     
                 sim_check = false;
             }
-            println!("Sim check {}", sim_check);
         }
     //handle2.join().unwrap();
 
-
+        if (!sim_check) {
+            println!("Simulation check fails. Output cheating certificate");
+        }
 
     //  Step 7
     sender.write_usize(j_hat).unwrap();
@@ -575,16 +580,59 @@ pub fn pvc() {
         //println!("sent: {:?}", rcv_seed_a2[i].as_ref());
     }
     sender.flush();
-/*
+
     // Step 8 
     let rng = AesRng::from_seed(seed_b[j_hat]);
     let mut ev =
-    Evaluator::<UnixChannel, AesRng, ChouOrlandiReceiver>::new(gc_sender.clone(), rng).unwrap();
-    //let xs = ev.receive_many(&vec![2; 128]).unwrap();
-    //let ys = ev.encode_many(&party_b_input, &vec![2; 128]).unwrap();
-    //circ2.eval(&mut ev, &xs, &ys).unwrap();  
+    Evaluator::<UnixChannel, AesRng, ChouOrlandiReceiver>::new(sender.clone(), rng).unwrap();
+    let xs = ev.receive_many(&vec![2; 128]).unwrap();
+    let ys = ev.encode_many(&party_b_input, &vec![2; 128]).unwrap();
+    circ2.eval(&mut ev, &xs, &ys).unwrap(); 
+    let mut sha_seed : [u8;32] = [0;32]; 
+    sender.read_bytes(&mut sha_seed);
+    //println!("sha seed received {:?}",sha_seed );
+    let mut wire_commitments: [[[u8;32]; 2];n1] = [[[0;32]; 2];n1];
+    for j in 0..n1 {
+            sender.read_bytes(&mut wire_commitments[j][0]);  
+            sender.read_bytes(&mut wire_commitments[j][1]);   
+    }
+
+    // check if the commitments are correct
+    let mut commit_check = true;
+    for i in 0..n1 {
+        let mut commit = ShaCommitment::new(sha_seed);
+        commit.input(&xs[i].as_block().as_ref()); //zero wire
+        let commitment1 = commit.finish();
+
+        if (!compare(&commitment1,&wire_commitments[i][0]) && !compare(&commitment1,&wire_commitments[i][1])) {
+            println!("commitment check fails for wires {}", i);
+        }
+    }
+
+    let mut commit = ShaCommitment::new(sha_seed);
+    let mut gc_block_hash = ev.gc_hash.finalize();
+    let gc_hash = gc_block_hash.as_slice();
+    //println!("gc_hash {:?}",gc_hash );
+    commit.input(&gc_hash);
+    for j in 0..n1 {
+            commit.input(&wire_commitments[j][0]); 
+            //println!("wire {} 1 {:?}",j,wire_commitments[j][0]);
+            commit.input(&wire_commitments[j][1]); 
+            //println!("wire {} 2 {:?}",j,wire_commitments[j][1]);
+        }
+    
+    for j in 0..n3 {
+            commit.input(&ev.output_wires[j].0.as_ref());
+            commit.input(&ev.output_wires[j].1.as_ref());
+    }
+    let commitment2 = commit.finish();
+    
+    if (!compare(&commitment2,&rcv_gc_commitments[j_hat])) {
+            println!("commitment check fails for c ");
+    }
+
     handle.join().unwrap();
-*/
+
 
 
 }			

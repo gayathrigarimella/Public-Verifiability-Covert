@@ -214,10 +214,11 @@ impl<C: AbstractChannel, RNG, OT> Fancy for Evaluator<C, RNG, OT> {
 
         // Receive the output ciphertext from the garbler
         let ct = self.channel.read_blocks(q as usize)?;
-        for i in 0..ct.len() {
-            self.gc_hash.update(ct[i].as_ref());
-        }
 
+        let mut temp : (Block, Block) = (Block::default(),Block::default());
+        temp.0 = ct[0];
+        temp.1 = ct[1];
+        self.output_wires.append(&mut vec![temp]);
         // Attempt to brute force x using the output ciphertext
         let mut decoded = None;
         for k in 0..q {
