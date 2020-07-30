@@ -1,8 +1,8 @@
 # public-verifiablity-covert
 
-This is a Rust-library that implements secure two-party computation with covert security described in [https://eprint.iacr.org/2018/1108.pdf]. Our protocol implementation is built using the Swanky suite of libraries that implement Multiparty computation building blocks in rust [https://github.com/GaloisInc/swanky)]. 
-Covert security, ...
-Said briefly the protoocol ...
+This is a Rust-library that implements secure two-party computation with covert security described in [https://eprint.iacr.org/2018/1108.pdf]. Our protocol implementation is built using the Swanky suite of libraries that implement Multiparty computation building blocks in rust [https://github.com/GaloisInc/swanky]. 
+The notion of covert security lies somewhere between semi-honest and malicious-secure and guarantees that cheating behavior is caught with some reasonable probability like 1/2. This probability is determined by the 'lambda' parameter chosen before running the protocol. 
+In order to achieve secure two-party computation with covert security, we used the following building blocks 
 
 
 ## Environment setup: 
@@ -15,9 +15,29 @@ Said briefly the protoocol ...
     git clone https://github.com/gayathrigarimella/public-verifiablity-covert.git
 ```
 
+- Build the project 
+```bash
+    cargo build
+```
 
+### Ubuntu
 
 ## Tests: 
+We have the following test functions 
+...
+
+- Running our test functions
+```bash
+    cargo test
+```
+
+Consider the example below to run your own test for the PVC functionality. The function is parameterized as follows 
+```
+    pvc(x : [], y .. , lambda) -> {
+
+    }
+```
+Add the circuit description in the format to the circuits folders. .... 
 
 ## Contacts
 Gayathri Garimella <garimelg@oregonstate.edu>
