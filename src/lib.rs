@@ -1,3 +1,12 @@
+#![allow(non_snake_case)]
+#![allow(non_upper_case_globals)]
+#![allow(unused_assignments)]
+#![allow(dead_code)]
+#![allow(unused_must_use)]
+#![allow(unused_variables)]
+#![allow(unused_parens)]
+#![allow(unused_mut)]
+
 pub mod chou_orlandi;
 mod dummy_garbler;
 mod evaluator;
@@ -35,23 +44,21 @@ use std::convert::TryInto;
 use ChouOrlandiReceiver as OTReceiver;
 use ChouOrlandiSender as OTSender;
 
+
+
 fn rand_block_vec(size: usize) -> Vec<Block> {
     (0..size).map(|_| rand::random::<Block>()).collect()
 }
-
-/*fn rand_bool_vec(size: usize) -> Vec<bool> {
-    (0..size).map(|_| rand::random::<bool>()).collect()
-} */
 
 fn compare(v1: &[u8], v2: &[u8]) -> bool {
     (v1.len() == v2.len()) && v1.iter().zip(v2).all(|(a, b)| *a == *b)
 }
 
-pub fn pvc() {
+pub fn pvc(input_a : [u16; 128], input_b : [u16; 128], rep_factor: usize) {
     //	kappa = 128, lambda = 4
     const n1: usize = 128; //  length of P1 input
     const n3: usize = 128;
-    const lambda: usize = 4; //	replicating factor
+    let lambda: usize = rep_factor; //	replicating factor
 
     let circ = Circuit::parse("circuits/AES-non-expanded.txt").unwrap(); //we are garbling AES
     let circ_ = circ.clone();
@@ -65,10 +72,8 @@ pub fn pvc() {
     //let (mut gc_sender, mut gc_receiver) = unix_channel_pair();
     //We sample random inputs for computing the circuit for both parties
     let mut input_rng = thread_rng();
-    let mut party_a_input = [0u16; 128];
-    let mut party_b_input = [0u16; 128];
-    input_rng.fill(&mut party_a_input);
-    input_rng.fill(&mut party_b_input);
+    let party_a_input = input_a;
+    let party_b_input = input_b;
 
     //let mut comm_seed = rand::thread_rng().gen::<[u8; 32]>(); // sha commitment seed
     let seed: _ = rand::thread_rng().gen::<[u8; 32]>();
@@ -77,7 +82,7 @@ pub fn pvc() {
     let handle = std::thread::spawn(move || {
         // party_a : receiver thread
         // Step (a)
-        let mut commitments: [[u8; 32]; lambda] = [[0; 32]; lambda]; //expecting commitment of seed_b(s)
+        let mut commitments: Vec<[u8; 32]> = vec![[0; 32]; lambda]; //expecting commitment of seed_b(s)
         for i in 0..lambda {
             receiver.read_bytes(&mut commitments[i]).unwrap();
             //println!("received data: {:?}",commitments[i]);
@@ -119,10 +124,10 @@ pub fn pvc() {
         // then commit and send c = (GC_j, C1, output_wires)
 
         //initializing array of commitments sent by party_a to party_b
-        let mut wire_commitments: [[[[u8; 32]; 2]; n1]; lambda] = [[[[0; 32]; 2]; n1]; lambda];
-        let mut gc_commitments: [[u8; 32]; lambda] = [[0; 32]; lambda];
-        let mut gc_hash: [[u8; 32]; lambda] = [[0; 32]; lambda];
-        let mut comm_seed_a: [[u8; 32]; lambda] = [[0; 32]; lambda];
+        let mut wire_commitments: Vec<[[[u8; 32]; 2]; n1]> = vec![[[[0; 32]; 2]; n1]; lambda];
+        let mut gc_commitments: Vec<[u8; 32]> = vec![[0; 32]; lambda];
+        let mut gc_hash: Vec<[u8; 32]> = vec![[0; 32]; lambda];
+        let mut comm_seed_a: Vec<[u8; 32]> = vec![[0; 32]; lambda];
         let mut commit: ShaCommitment;
         for i in 0..lambda {
             let mut rng = AesRng::from_seed(seed_a[i]);
@@ -203,7 +208,7 @@ pub fn pvc() {
         receiver.flush();
 
         let mut str_eq_flag: bool = true;
-        let mut rcv_seeds: [[u8; 16]; lambda] = [[0; 16]; lambda];
+        let mut rcv_seeds: Vec<[u8; 16]> = vec![[0; 16]; lambda];
         for i in 0..lambda {
             receiver.read_bytes(&mut rcv_seeds[i]).unwrap();
             if (i != j_hat && !compare(&rcv_seeds[i].clone(), &seed_a2[i].as_ref()))
@@ -237,8 +242,8 @@ pub fn pvc() {
     //party_b: sender thread
     // Step (a)
     let seed_b = rand_block_vec(lambda); //party_b samples his seeds
-    let mut comm_seed_b: [[u8; 32]; lambda] = [[0; 32]; lambda];
-    let mut seed_commitments: [[u8; 32]; lambda] = [[0; 32]; lambda];
+    let mut comm_seed_b: Vec<[u8; 32]> = vec![[0; 32]; lambda];
+    let mut seed_commitments: Vec<[u8; 32]> = vec![[0; 32]; lambda];
     for i in 0..lambda {
         comm_seed_b[i] = rand::thread_rng().gen::<[u8; 32]>();
         let mut commit = ShaCommitment::new(comm_seed_b[i]);
@@ -253,7 +258,7 @@ pub fn pvc() {
     sender.flush();
     // Step (b) : j_hat, recei
     let j_hat = thread_rng().gen_range(0, lambda); //this is the choice 'j_hat'
-    let mut b: [bool; lambda] = [false; lambda];
+    let mut b: Vec<bool> = vec![false; lambda];
     b[j_hat] = true; //choosing choice bits of OT
     let reader = BufReader::new(ot_receiver.try_clone().unwrap());
     let writer = BufWriter::new(ot_receiver.try_clone().unwrap());
@@ -312,7 +317,7 @@ pub fn pvc() {
     // step (d) : collect commit(input_commit, GC, output_wire) for each 'j'
     // collect vector of commitments
 
-    let mut rcv_gc_commitments: [[u8; 32]; lambda] = [[0; 32]; lambda]; //expecting commitment of seed_b(s)
+    let mut rcv_gc_commitments: Vec<[u8; 32]> = vec![[0; 32]; lambda]; //expecting commitment of seed_b(s)
     for i in 0..lambda {
         commit_sender
             .read_bytes(&mut rcv_gc_commitments[i])
@@ -321,7 +326,7 @@ pub fn pvc() {
     }
     commit_sender.flush().unwrap();
 
-    let mut rcd_signatures: [[u8; 64]; lambda] = [[0; 64]; lambda];
+    let mut rcd_signatures: Vec<[u8; 64]> = vec![[0; 64]; lambda];
     for i in 0..lambda {
         sender.read_bytes(&mut rcd_signatures[i]).unwrap();
         println!("received signature {}", i);
@@ -341,11 +346,11 @@ pub fn pvc() {
         let seed_a = rcv_seed_a.clone();
         const n1: usize = 128; //  length of P1 input
                                //const n3: usize = 128;
-        let mut wire_commitments: [[[[u8; 32]; 2]; n1]; lambda] = [[[[0; 32]; 2]; n1]; lambda];
-        let mut gc_commitments: [[u8; 32]; lambda] = [[0; 32]; lambda];
-        let mut gc_hash: [[u8; 32]; lambda] = [[0; 32]; lambda];
+        let mut wire_commitments: Vec<[[[u8; 32]; 2]; n1]> = vec![[[[0; 32]; 2]; n1]; lambda];
+        let mut gc_commitments: Vec<[u8; 32]> = vec![[0; 32]; lambda];
+        let mut gc_hash: Vec<[u8; 32]> = vec![[0; 32]; lambda];
         let mut commit: ShaCommitment;
-        let mut sim_comm_seed_a: [[u8; 32]; lambda] = [[0; 32]; lambda];
+        let mut sim_comm_seed_a: Vec<[u8; 32]> = vec![[0; 32]; lambda];
 
         for i in 0..lambda {
             let mut rng2 = AesRng::from_seed(seed_a[i]);
@@ -443,7 +448,7 @@ pub fn pvc() {
     // step (d) : collect commit(input_commit, GC, output_wire) for each 'j'
     // collect vector of commitments
 
-    let mut sim_rcv_gc_commitments: [[u8; 32]; lambda] = [[0; 32]; lambda]; //expecting commitment of seed_b(s)
+    let mut sim_rcv_gc_commitments: Vec<[u8; 32]> = vec![[0; 32]; lambda]; //expecting commitment of seed_b(s)
     let mut sim_check: bool = true;
     for i in 0..lambda {
         sim_commit_sender
@@ -503,7 +508,7 @@ pub fn pvc() {
     }
 
     let mut commit = ShaCommitment::new(sha_seed);
-    let mut gc_block_hash = ev.gc_hash.finalize();
+    let gc_block_hash = ev.gc_hash.finalize();
     let gc_hash = gc_block_hash.as_slice();
     //println!("gc_hash {:?}",gc_hash );
     commit.input(&gc_hash);
@@ -526,12 +531,16 @@ pub fn pvc() {
     handle.join().unwrap();
 }
 
-
 #[cfg(test)]
 mod tests {
 use super::*;
     #[test]
     fn test_aes() {
-        pvc();
+        let mut party_a_input = [0u16; 128];
+        let mut party_b_input = [0u16; 128];
+        let mut input_rng = thread_rng();
+        input_rng.fill(&mut party_a_input);
+        input_rng.fill(&mut party_b_input);
+        pvc(party_a_input, party_b_input, 4);
     }
 }
