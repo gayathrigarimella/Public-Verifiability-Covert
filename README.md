@@ -1,4 +1,4 @@
-# public-verifiablity-covert
+# Public-Verifiability-Covert
 
 This is a Rust-library that implements secure two-party computation with covert security with public verifiability described in the paper [PVC](https://eprint.iacr.org/2018/1108.pdf). Our protocol implementation is built using the Swanky suite of libraries that implement Multiparty computation building blocks in rust [Swanky](https://github.com/GaloisInc/swanky). 
 The notion of covert security lies somewhere between semi-honest and malicious-secure and guarantees that cheating behavior is caught with some reasonable probability like 1/2, 1/4. This probability is determined by the 'replicating/deterrence factor' that  parameterized by the protocol. In the event of malicious behavior, the protocol generates a certificate that is publicly verifiable, further deterring cheating. 
