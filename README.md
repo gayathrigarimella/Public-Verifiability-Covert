@@ -1,6 +1,6 @@
 # public-verifiablity-covert
 
-This is a Rust-library that implements secure two-party computation with covert security with public verifiability described in [PVC](https://eprint.iacr.org/2018/1108.pdf). Our protocol implementation is built using the Swanky suite of libraries that implement Multiparty computation building blocks in rust [Swanky](https://github.com/GaloisInc/swanky). 
+This is a Rust-library that implements secure two-party computation with covert security with public verifiability described in the paper [PVC](https://eprint.iacr.org/2018/1108.pdf). Our protocol implementation is built using the Swanky suite of libraries that implement Multiparty computation building blocks in rust [Swanky](https://github.com/GaloisInc/swanky). 
 The notion of covert security lies somewhere between semi-honest and malicious-secure and guarantees that cheating behavior is caught with some reasonable probability like 1/2, 1/4. This probability is determined by the 'replicating/deterrence factor' that  parameterized by the protocol. In the event of malicious behavior, the protocol generates a certificate that is publicly verifiable, further deterring cheating. 
 Briefly, this protocol uses the cut-and-choose paradigm such that the evaluator checks '(replicating factor - 1)' number of garbled circuits(GC) and evaluated one randomly chosen GC. To catch cheating behavior, the garbler generates each GC deterministically from a different uniformly random seed, and the evaluator learns '(replicating factor - 1)' of those seeds using a maliciously-secure Oblivious transfer protocol enabling the check. To ensure public verifiability, the garbler signs every message in the OT transcript. Additionally, the evaluator sends a commitment of all his random seeds to the garbler. 
 
@@ -61,6 +61,28 @@ Disclaimer: This is research code, please do not use it in production.
     cargo build
     cargo test
 ```
+
+### Tests
+
+-  We run our PVC protocol on AES functionality described by the [circuit](https://github.com/gayathrigarimella/Public-Verifiability-Covert/blob/master/circuits/AES-non-expanded.txt) on uniformly random inputs for the garbler and the evaluator. We have the following test in module lib.rs 
+```bash
+#[cfg(test)]
+mod tests {
+use super::*;
+    #[test]
+    fn test_aes() {
+        let mut party_a_input = [0u16; 128];
+        let mut party_b_input = [0u16; 128];
+        let mut input_rng = thread_rng(); 
+        input_rng.fill(&mut party_a_input);
+        input_rng.fill(&mut party_b_input);
+        pvc("circuits/AES-non-expanded.txt",party_a_input.to_vec(), party_b_input.to_vec(), 4);
+    }
+}
+
+```
+
+Looking ahead, we would like to re-organize our function into separate modules PVC garbler and PVC evaluator. This would allow us to make the communication channel as a parameter (of the function call) making it amenable to integrate this functionality into larger programs. Additionally, it would allow more rigorous testing of cheating behavior and verification of the certificate. 
 
 ## Contact
 Gayathri Garimella <garimelg@oregonstate.edu>, 
