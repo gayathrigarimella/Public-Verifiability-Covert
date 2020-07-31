@@ -10,7 +10,9 @@ This is a two party protocol with a designated garbler and evaluator. We use the
 ### Function declaration for the 2 party PVC protocol:  
 
 ```bash
-pvc(circuit_file: &'static str, party_a_input : Vec<u16>, party_b_input : Vec<u16>, rep_factor: usize) -> std::option::Option<Vec<u16>> {}
+
+pvc(circuit_file: &'static str, party_a_input : Vec<u16>, party_b_input : Vec<u16>, rep_factor: usize) -> std::option::Option<Vec<u16>> {
+}
 ```
 Input parameters: 
 - Circuit_file - file name containing the circuit description. The file must follow the format given here: https://homes.esat.kuleuven.be/~nsmart/MPC/
@@ -33,7 +35,7 @@ OT transcript (trans_j) from step 2: Vec<u8>,
 OT transcript hash (H_j) from step 3: Vec<u8>,
 Commitment c_j from step 4: [u8; 32],
 ECDSA signature \sigma_j from step 5: [u8,64],
- seed^b_j : 128 bit Block,
+seed^b_j : 128 bit Block,
 Sha_seed_j : [u8;32],
 }
 ```
@@ -56,10 +58,6 @@ Disclaimer: This is research code, please do not use it in production.
     cargo test
 ```
 
-### Tests: 
-We have the following test functions TODO (one test that passes, one that has cheating and the certificate is printed at least)
-
-
 ## Contact
 Gayathri Garimella <garimelg@oregonstate.edu>, 
-Jaspal Singh Saini <jaspal.singh@iitrpr.ac.in>
+Jaspal Singh Saini <singjaspal@oregonstate.edu>
