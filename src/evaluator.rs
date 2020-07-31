@@ -22,6 +22,7 @@ pub struct Evaluator<C, RNG, OT> {
     pub garbler_wires : Vec<Wire>,
     pub gc_hash: Sha256,
     pub output_wires : Vec<(Block, Block)>,
+    pub output_vec: Vec<u16>,
     current_gate: usize,
     current_output: usize
 }
@@ -37,6 +38,7 @@ impl<C: AbstractChannel, RNG: CryptoRng + Rng, OT: OtReceiver<Msg = Block> + Sem
         let evaluator = Ev::new(channel.clone());
         let garbler_wires: Vec<Wire> = Vec::new();
         let output_wires: Vec<(Block, Block)> = Vec::new();
+        let output_vec: Vec<u16> = Vec::new();
         let gc_hash = Sha256::new();
         Ok(Self {
             evaluator,
@@ -46,6 +48,7 @@ impl<C: AbstractChannel, RNG: CryptoRng + Rng, OT: OtReceiver<Msg = Block> + Sem
             gc_hash,
             garbler_wires,
             output_wires,
+            output_vec,
             current_output : 0,
             current_gate : 0
         })
@@ -225,6 +228,7 @@ impl<C: AbstractChannel, RNG, OT> Fancy for Evaluator<C, RNG, OT> {
             let hashed_wire = x.hash(output_tweak(i, k));
             if hashed_wire == ct[k as usize] {
                 decoded = Some(k);
+                self.output_vec.push(k);
                 break;
             }
         }
