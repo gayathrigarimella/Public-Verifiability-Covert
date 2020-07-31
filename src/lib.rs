@@ -112,7 +112,7 @@ pub fn pvc(circuit_file: &'static str, party_a_input : Vec<u16>, party_b_input :
                 .unwrap();
             trans[i] = ot.transcript.clone();
         }
-        //TODO_1: save transcript of the OT in step b as 'trans_j'
+
         receiver.flush();
 
         // step (c) : used the seed_a(s) to initialize all rep_factor GC
@@ -557,11 +557,11 @@ mod tests {
 use super::*;
     #[test]
     fn test_aes() {
-        let mut party_a_input = vec![0u16; 128];
-        let mut party_b_input = vec![0u16; 128];
+        let mut party_a_input = [0u16; 128];
+        let mut party_b_input = [0u16; 128];
         let mut input_rng = thread_rng();
-        //input_rng.fill(&mut party_a_input);
-        //input_rng.fill(&mut party_b_input);
-        pvc("circuits/AES-non-expanded.txt",party_a_input, party_b_input, 4);
+        input_rng.fill(&mut party_a_input);
+        input_rng.fill(&mut party_b_input);
+        pvc("circuits/AES-non-expanded.txt",party_a_input.to_vec(), party_b_input.to_vec(), 4);
     }
 }
