@@ -64,4 +64,4 @@ Disclaimer: This is research code, please do not use it in production.
 
 ## Contact
 Gayathri Garimella <garimelg@oregonstate.edu>, 
-Jaspal Singh Saini <singjaspal@oregonstate.edu>
+Jaspal Singh Saini <singjasp@oregonstate.edu>
