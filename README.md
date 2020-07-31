@@ -2,17 +2,17 @@
 
 This is a Rust-library that implements secure two-party computation with covert security with public verifiability described in [PVC](https://eprint.iacr.org/2018/1108.pdf). Our protocol implementation is built using the Swanky suite of libraries that implement Multiparty computation building blocks in rust [Swanky](https://github.com/GaloisInc/swanky). 
 The notion of covert security lies somewhere between semi-honest and malicious-secure and guarantees that cheating behavior is caught with some reasonable probability like 1/2, 1/4. This probability is determined by the 'replicating/deterrence factor' that  parameterized by the protocol. In the event of malicious behavior, the protocol generates a certificate that is publicly verifiable, further deterring cheating. 
-Briefly, this protocol uses the cut-and-choose paradigm such that the evaluator checks 'replicating factor - 1' number of garbled circuits(GC) and evaluated one randomly chosen GC. To catch cheating behavior, the garbler generates each GC deterministically from a different uniformly random seed, and the evaluator learns 'replicating factor - 1' of those seeds using a maliciously-secure Oblivious transfer protocol enabling the check. To ensure public verifiability, the garbler signs every message in the OT transcript. Additionally, the evaluator sends a commitment of all his random seeds to the garbler. 
+Briefly, this protocol uses the cut-and-choose paradigm such that the evaluator checks '(replicating factor - 1)' number of garbled circuits(GC) and evaluated one randomly chosen GC. To catch cheating behavior, the garbler generates each GC deterministically from a different uniformly random seed, and the evaluator learns '(replicating factor - 1)' of those seeds using a maliciously-secure Oblivious transfer protocol enabling the check. To ensure public verifiability, the garbler signs every message in the OT transcript. Additionally, the evaluator sends a commitment of all his random seeds to the garbler. 
 
 ## Code overview
 This is a two party protocol with a designated garbler and evaluator. We use the malicious-secure Chou-Orlandi Oblivious instantiation from Swanky's OT library [Ocelot](https://github.com/GaloisInc/swanky/tree/master/ocelot) and the semi-honest two party secure computation using Garbled circuits from [2PC](https://github.com/GaloisInc/swanky/tree/master/fancy-garbling/src/twopac). We use the instantiation of commitment scheme in Swanky's [Scuttlebutt](https://github.com/GaloisInc/swanky/tree/master/scuttlebutt/src) library and ECDSA signatures implemented in crypto [PKS](https://docs.rs/rust-crypto/0.2.36/crypto/index.html) and an implementation of  [SHA2](https://docs.rs/sha2/0.9.1/sha2/) hash function.
 
 ### Function declaration for the 2 party PVC protocol:  
-
 ```bash
-
-pvc(circuit_file: &'static str, party_a_input : Vec<u16>, party_b_input : Vec<u16>, rep_factor: usize) -> std::option::Option<Vec<u16>> {
-}
+pvc(circuit_file: &'static str, 
+party_a_input : Vec<u16>, party_b_input : Vec<u16>, 
+rep_factor: usize) 
+-> std::option::Option<Vec<u16>> {}
 ```
 Input parameters: 
 - Circuit_file - file name containing the circuit description. The file must follow the format given here: https://homes.esat.kuleuven.be/~nsmart/MPC/
@@ -21,9 +21,13 @@ Input parameters:
 - Rep_factor - The replicating factor of the PVC protocol. This factor is proportional to the deterrence factor - which determines the probability of catching any cheating. 
 
 Output parameter:
-The function outputs ‘None’ if cheating is detected. Else it returns the expected output of evaluating the input circuit on the input vectors. (edited) 
+The function outputs ‘None’ if cheating is detected. Else it returns the expected output of evaluating the input circuit on the input vectors. 
 
+The function simulates the execution of the evaluator on the main thread and the garbler on a spawned thread. We establish communication channel between them using unix stream sockets. 
 
+```bash
+    let (mut receiver, mut sender) = unix_channel_pair();
+```
 
 ### Public verifiability
 Whenever cheating is detected, the PVC function call prints a publicly verifiable certificate of cheating. Certificate contains the following data items. 
