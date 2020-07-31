@@ -20,22 +20,23 @@ In order to achieve secure two-party computation with covert security, we used t
     cargo build
 ```
 
-### Ubuntu
+### Ubuntu 
+TODO
 
 ## Tests: 
-We have the following test functions 
-...
+We have the following test functions TODO
 
 - Running our test functions
 ```bash
     cargo test
 ```
 
-Consider the example below to run your own test for the PVC functionality. Add the circuit description in the format to the circuits folders.
+Consider the example below to run your own test for the PVC functionality. Add the circuit description (in the format ..) to the circuits folders. Choose the replicating factor and inputs from both parties ..
 
 ```
     pvc(x : [], y .. , lambda) -> (output type){
-        spawn two threads {sender}{receiver}
+        spawn two threads {sender}
+        {receiver}
 
     }
 ```
