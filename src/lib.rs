@@ -27,7 +27,7 @@ use std::{
 //use fancy_garbling::circuit;
 //use crate::garble::{Garbler as Gb, Evaluator as Ev};
 use crypto::ed25519;
-pub use dummy_garbler::DummyGarbler;
+pub use dummy_garbler::{PartyId, DummyGarbler};
 pub use evaluator::Evaluator;
 pub use garbler::Garbler;
 use sha2::Digest;
@@ -82,7 +82,7 @@ pub fn pvc(circuit_file: &'static str, party_a_input : Vec<u16>, party_b_input :
         // Step (a)
         let mut commitments: Vec<[u8; 32]> = vec![[0; 32]; rep_factor]; //expecting commitment of seed_b(s)
         for i in 0..rep_factor {
-            receiver.read_bytes(&mut commitments[i]).unwrap();
+            receiver.read_exact(&mut commitments[i]).unwrap();
             //println!("received data: {:?}",commitments[i]);
         }
         receiver.flush();
@@ -129,14 +129,15 @@ pub fn pvc(circuit_file: &'static str, party_a_input : Vec<u16>, party_b_input :
         let mut commit: ShaCommitment;
         for i in 0..rep_factor {
             let mut rng = AesRng::from_seed(seed_a[i]);
-            let mut gb = DummyGarbler::<UnixChannel, AesRng, ChouOrlandiSender>::new(
-                receiver.clone(),
+            let mut gb = DummyGarbler::<&mut UnixChannel, AesRng, ChouOrlandiSender>::new(
+                &mut receiver,
                 rng.clone(),
             )
             .unwrap();
             let xs = gb.encode_many(&party_a_input, &vec![2; n1]).unwrap();
-            let ys = gb.receive_many(&vec![2; n2]).unwrap(); // This function calls OT send, OT uses the same rng seeded by
+            let ys = gb.receive_many(PartyId::Evaluator, &vec![2; n2]).unwrap(); // This function calls OT send, OT uses the same rng seeded by
             circ_.eval(&mut gb, &xs, &ys).unwrap();
+            gb.get_channel().flush().unwrap();
             gc_hash[i] = gb
                 .gc_hash
                 .finalize()
@@ -145,7 +146,6 @@ pub fn pvc(circuit_file: &'static str, party_a_input : Vec<u16>, party_b_input :
                 .expect("slice with incorrect length");
             trans_hash[i] = gb.ot.trans_hash;
             //println!("CHECK CHECK {:?}", x);
-            receiver.flush().unwrap();
 
             // step (d)
             // commiting the garbler's wire labels for each (GC_j, comm(A), Z)
@@ -170,14 +170,14 @@ pub fn pvc(circuit_file: &'static str, party_a_input : Vec<u16>, party_b_input :
                 commit.input(&wire_commitments[i][j][0]);
                 commit.input(&wire_commitments[i][j][1]);
             }
-            for j in 0..gb.output_wires.len() {
-                commit.input(&gb.output_wires[j].0.as_ref());
-                commit.input(&gb.output_wires[j].1.as_ref());
+            for c in gb.output_colors {
+                let data: [u8; 2] = unsafe { std::mem::transmute(c) };
+                commit.input(&data);
             }
             gc_commitments[i] = commit.finish();
             //step (d) sending the commitments
 
-            commit_receiver.write_bytes(&gc_commitments[i]).unwrap();
+            commit_receiver.write_all(&gc_commitments[i]).unwrap();
             //println!("send data: {:?}", gc_commitments[i]);
         }
         commit_receiver.flush();
@@ -197,7 +197,7 @@ pub fn pvc(circuit_file: &'static str, party_a_input : Vec<u16>, party_b_input :
             sign_message.append(&mut trans_hash[i].clone());
             let mut sign = ed25519::signature(&sign_message, &private_key);
             //println!("Signature {}",sign.len() );
-            receiver.write_bytes(&mut sign).unwrap();
+            receiver.write_all(&mut sign).unwrap();
             receiver.flush().unwrap();
         }
 
@@ -207,7 +207,7 @@ pub fn pvc(circuit_file: &'static str, party_a_input : Vec<u16>, party_b_input :
 
         let mut rcv_seeds: Vec<[u8; 16]> = vec![[0; 16]; rep_factor];
         for i in 0..rep_factor {
-            receiver.read_bytes(&mut rcv_seeds[i]).unwrap();
+            receiver.read_exact(&mut rcv_seeds[i]).unwrap();
             if (i != j_hat && !compare(&rcv_seeds[i].clone(), &seed_a2[i].as_ref()))
                 || (i == j_hat) && !compare(&rcv_seeds[i].clone(), &witness2[i].as_ref())
             {
@@ -218,20 +218,20 @@ pub fn pvc(circuit_file: &'static str, party_a_input : Vec<u16>, party_b_input :
         //println!("String flag {}", str_eq_flag);
 
         // Step 8
-        
+
         let mut rng = AesRng::from_seed(seed_a2[j_hat]);
         let mut gb =
-        Garbler::<UnixChannel, AesRng, ChouOrlandiSender>::new(receiver.clone(), rng).unwrap();
+        Garbler::<&mut UnixChannel, AesRng, ChouOrlandiSender>::new(&mut receiver, rng).unwrap();
         let xs = gb.encode_many(&vec![0_u16; 128], &vec![2; 128]).unwrap();
-        let ys = gb.receive_many(&vec![2; 128]).unwrap(); // This function calls OT send, OT uses the same rng seeded by
+        let ys = gb.receive_many(PartyId::Evaluator, &vec![2; 128]).unwrap(); // This function calls OT send, OT uses the same rng seeded by
         circ1.eval(&mut gb, &xs, &ys).unwrap();
 
         // send wire label commitments and sha seed
         //println!("sent seed {:?}", comm_seed_a[j_hat]);
-        receiver.write_bytes(&comm_seed_a[j_hat]);
+        receiver.write_all(&comm_seed_a[j_hat]);
             for j in 0..n1 {
-                receiver.write_bytes(&wire_commitments[j_hat][j][0]);
-                receiver.write_bytes(&wire_commitments[j_hat][j][1]);
+                receiver.write_all(&wire_commitments[j_hat][j][0]);
+                receiver.write_all(&wire_commitments[j_hat][j][1]);
                 }
 
     });
@@ -250,7 +250,7 @@ pub fn pvc(circuit_file: &'static str, party_a_input : Vec<u16>, party_b_input :
             commit.input(&[s_b[j]]); //<Block> has size [u8;16]
         }
         seed_commitments[i] = commit.finish();
-        sender.write_bytes(&seed_commitments[i]).unwrap();
+        sender.write_all(&seed_commitments[i]).unwrap();
     }
     sender.flush();
     // Step (b) : j_hat, recei
@@ -283,9 +283,9 @@ pub fn pvc(circuit_file: &'static str, party_a_input : Vec<u16>, party_b_input :
     for i in 0..rep_factor {
         let rng = AesRng::from_seed(seed_b[i]);
         let mut ev =
-            Evaluator::<UnixChannel, AesRng, ChouOrlandiReceiver>::new(sender.clone(), rng)
+            Evaluator::<&mut UnixChannel, AesRng, ChouOrlandiReceiver>::new(&mut sender, rng)
                 .unwrap();
-        let xs = ev.receive_many(&vec![2; n1]).unwrap();
+        let xs = ev.receive_many(PartyId::Garbler, &vec![2; n1]).unwrap();
         //println!("ev side: actual encoding of garbler {:?}", xs[10]);
         if i == j_hat {
             party_b_evalwires = ev.encode_many(&party_b_input, &vec![2; n2]).unwrap();
@@ -296,7 +296,7 @@ pub fn pvc(circuit_file: &'static str, party_a_input : Vec<u16>, party_b_input :
         //println!("party_b_evalwires: {}", party_b_evalwires[10]);
         // only for j_hat, provide GC input 'y'
         } else {
-            let ys = ev.encode_many(&vec![0_u16; 128], &vec![2; n2]).unwrap();
+            let ys = ev.encode_many(&vec![0_u16; n2], &vec![2; n2]).unwrap();
             //println!("ev side: actual encoding of evaluator {:?}", ys[10]);
             // for all GC's learn the dummy zero wire labels
         }
@@ -318,7 +318,7 @@ pub fn pvc(circuit_file: &'static str, party_a_input : Vec<u16>, party_b_input :
     let mut rcv_gc_commitments: Vec<[u8; 32]> = vec![[0; 32]; rep_factor]; //expecting commitment of seed_b(s)
     for i in 0..rep_factor {
         commit_sender
-            .read_bytes(&mut rcv_gc_commitments[i])
+            .read_exact(&mut rcv_gc_commitments[i])
             .unwrap();
         //println!("received data: {:?}", rcv_gc_commitments[i]);
     }
@@ -326,7 +326,7 @@ pub fn pvc(circuit_file: &'static str, party_a_input : Vec<u16>, party_b_input :
 
     let mut rcd_signatures: Vec<[u8; 64]> = vec![[0; 64]; rep_factor];
     for i in 0..rep_factor {
-        sender.read_bytes(&mut rcd_signatures[i]).unwrap();
+        sender.read_exact(&mut rcd_signatures[i]).unwrap();
         //println!("received signature {}", i);
         sender.flush().unwrap();
     }
@@ -351,14 +351,15 @@ pub fn pvc(circuit_file: &'static str, party_a_input : Vec<u16>, party_b_input :
 
         for i in 0..rep_factor {
             let mut rng2 = AesRng::from_seed(seed_a[i]);
-            let mut gb = DummyGarbler::<UnixChannel, AesRng, ChouOrlandiSender>::new(
-                sim_receiver.clone(),
+            let mut gb = DummyGarbler::<&mut UnixChannel, AesRng, ChouOrlandiSender>::new(
+                &mut sim_receiver,
                 rng2.clone(),
             )
             .unwrap();
             let xs = gb.encode_many(&vec![0_u16; n1], &vec![2; n1]).unwrap();
-            let ys = gb.receive_many(&vec![2; n2]).unwrap(); // This function calls OT send, OT uses the same rng seeded by
+            let ys = gb.receive_many(PartyId::Evaluator, &vec![2; n2]).unwrap(); // This function calls OT send, OT uses the same rng seeded by
             circ2.eval(&mut gb, &xs, &ys).unwrap();
+            gb.get_channel().flush().unwrap();
             gc_hash[i] = gb
                 .gc_hash
                 .finalize()
@@ -366,7 +367,6 @@ pub fn pvc(circuit_file: &'static str, party_a_input : Vec<u16>, party_b_input :
                 .try_into()
                 .expect("slice with incorrect length");
 
-            sim_receiver.flush().unwrap();
             // step (d)
             // commiting the garbler's wire labels for each (GC_j, comm(A), Z)
             sim_comm_seed_a[i] = rng2.gen::<[u8; 32]>();
@@ -392,14 +392,14 @@ pub fn pvc(circuit_file: &'static str, party_a_input : Vec<u16>, party_b_input :
                 commit.input(&wire_commitments[i][j][0]);
                 commit.input(&wire_commitments[i][j][1]);
             }
-            for j in 0..gb.output_wires.len() {
-                commit.input(&gb.output_wires[j].0.as_ref());
-                commit.input(&gb.output_wires[j].1.as_ref());
+            for c in gb.output_colors {
+                let data: [u8; 2] = unsafe { std::mem::transmute(c) };
+                commit.input(&data);
             }
             gc_commitments[i] = commit.finish();
             //step (d) sending the commitments
 
-            sim_commit_receiver.write_bytes(&gc_commitments[i]).unwrap();
+            sim_commit_receiver.write_all(&gc_commitments[i]).unwrap();
             //println!("sim send data: {:?}", gc_commitments[i]);
         }
         sim_commit_receiver.flush().unwrap();
@@ -410,9 +410,9 @@ pub fn pvc(circuit_file: &'static str, party_a_input : Vec<u16>, party_b_input :
     for i in 0..rep_factor {
         let rng = AesRng::from_seed(seed_b[i]);
         let mut ev =
-            Evaluator::<UnixChannel, AesRng, ChouOrlandiReceiver>::new(sim_sender.clone(), rng)
+            Evaluator::<&mut UnixChannel, AesRng, ChouOrlandiReceiver>::new(&mut sim_sender, rng)
                 .unwrap();
-        let xs = ev.receive_many(&vec![2; n1]).unwrap();
+        let xs = ev.receive_many(PartyId::Garbler, &vec![2; n1]).unwrap();
         //println!("sim ev side: actual encoding of garbler {:?}", xs[10]);
         if i == j_hat {
             sim_party_b_evalwires = ev.encode_many(&party_b_input, &vec![2; n2]).unwrap();
@@ -451,7 +451,7 @@ pub fn pvc(circuit_file: &'static str, party_a_input : Vec<u16>, party_b_input :
     sim_commit_sender.flush();
     for i in 0..rep_factor {
         sim_commit_sender
-            .read_bytes(&mut sim_rcv_gc_commitments[i])
+            .read_exact(&mut sim_rcv_gc_commitments[i])
             .unwrap();
         if (i != j_hat)
             && (!compare(&rcv_gc_commitments[i], &sim_rcv_gc_commitments[i])
@@ -485,7 +485,7 @@ pub fn pvc(circuit_file: &'static str, party_a_input : Vec<u16>, party_b_input :
     sender.flush();
 
     for i in 0..rep_factor {
-        sender.write_bytes(&rcv_seed_a2[i].as_ref()).unwrap();
+        sender.write_all(&rcv_seed_a2[i].as_ref()).unwrap();
         //println!("sent: {:?}", rcv_seed_a2[i].as_ref());
     }
     sender.flush();
@@ -494,17 +494,22 @@ pub fn pvc(circuit_file: &'static str, party_a_input : Vec<u16>, party_b_input :
 
     let rng = AesRng::from_seed(seed_b[j_hat]);
     let mut ev =
-        Evaluator::<UnixChannel, AesRng, ChouOrlandiReceiver>::new(sender.clone(), rng).unwrap();
-    let xs = ev.receive_many(&vec![2; n1]).unwrap();
+        Evaluator::<&mut UnixChannel, AesRng, ChouOrlandiReceiver>::new(&mut sender, rng).unwrap();
+    let xs = ev.receive_many(PartyId::Garbler, &vec![2; n1]).unwrap();
     let ys = ev.encode_many(&party_b_input, &vec![2; n2]).unwrap();
     circ2.eval(&mut ev, &xs, &ys).unwrap();
+
+    let ev_gc_hash = ev.gc_hash;
+    let ev_output_colors = ev.output_colors;
+    let ev_output_vec = ev.output_vec;
+
     let mut sha_seed: [u8; 32] = [0; 32];
-    sender.read_bytes(&mut sha_seed).unwrap();
+    sender.read_exact(&mut sha_seed).unwrap();
     //println!("sha seed received {:?}",sha_seed );
     let mut wire_commitments: Vec<[[u8; 32]; 2]> = vec![[[0; 32]; 2]; n1];
     for j in 0..n1 {
-        sender.read_bytes(&mut wire_commitments[j][0]).unwrap();
-        sender.read_bytes(&mut wire_commitments[j][1]).unwrap();
+        sender.read_exact(&mut wire_commitments[j][0]).unwrap();
+        sender.read_exact(&mut wire_commitments[j][1]).unwrap();
     }
 
     // check if the commitments are correct
@@ -521,7 +526,7 @@ pub fn pvc(circuit_file: &'static str, party_a_input : Vec<u16>, party_b_input :
     }
 
     let mut commit = ShaCommitment::new(sha_seed);
-    let gc_block_hash = ev.gc_hash.finalize();
+    let gc_block_hash = ev_gc_hash.finalize();
     let gc_hash = gc_block_hash.as_slice();
     //println!("gc_hash {:?}",gc_hash );
     commit.input(&gc_hash);
@@ -531,9 +536,9 @@ pub fn pvc(circuit_file: &'static str, party_a_input : Vec<u16>, party_b_input :
         commit.input(&wire_commitments[j][1]);
         //println!("wire {} 2 {:?}",j,wire_commitments[j][1]);
     }
-    for j in 0..ev.output_wires.len() {
-        commit.input(&ev.output_wires[j].0.as_ref());
-        commit.input(&ev.output_wires[j].1.as_ref());
+    for c in ev_output_colors {
+        let data: [u8; 2] = unsafe { std::mem::transmute(c) };
+        commit.input(&data);
     }
     let commitment2 = commit.finish();
 
@@ -542,14 +547,14 @@ pub fn pvc(circuit_file: &'static str, party_a_input : Vec<u16>, party_b_input :
     }
 
     handle.join().unwrap();
-    //println!("{:?}",ev.output_vec);
+    //println!("{:?}",ev_output_vec);
     if (abort) {
         return None;
     }
     else {
-        return Some(ev.output_vec);
+        return Some(ev_output_vec);
     }
-    
+
 }
 
 #[cfg(test)]

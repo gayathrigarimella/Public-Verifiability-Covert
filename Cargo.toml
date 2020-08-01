@@ -13,9 +13,9 @@ nightly = ["curve25519-dalek/avx2_backend", "rand/nightly", "scuttlebutt/nightly
 curve25519-dalek = { version = "2", features = ["std"] }
 libc = "0.2"
 itertools = "0.8.0"
-fancy-garbling = { git = "https://github.com/GaloisInc/swanky" }
-scuttlebutt = { git = "https://github.com/GaloisInc/swanky" , features = ["curve25519-dalek"]}
-ocelot = { git = "https://github.com/GaloisInc/swanky" }
+fancy-garbling = { git = "https://github.com/osu-crypto/swanky" }
+scuttlebutt = { git = "https://github.com/osu-crypto/swanky" , features = ["curve25519-dalek"]}
+ocelot = { git = "https://github.com/osu-crypto/swanky" }
 rand = "0.7"
 rust-crypto = "^0.2"
 sha2 = "0.9.1"

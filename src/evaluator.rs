@@ -4,9 +4,10 @@
 // Copyright © 2019 Galois, Inc.
 // See LICENSE for licensing information.
 use fancy_garbling::{
-    util::{output_tweak, tweak, tweak2},
+    util::{tweak, tweak2},
 };
 use fancy_garbling::{errors::TwopacError, Evaluator as Ev, Fancy, FancyInput, FancyReveal, Wire,HasModulus};
+pub use fancy_garbling::twopac::semihonest::PartyId;
 use ocelot::ot::Receiver as OtReceiver;
 use rand::{CryptoRng, Rng};
 use scuttlebutt::{AbstractChannel, Block, SemiHonest};
@@ -16,15 +17,12 @@ use fancy_garbling::errors::EvaluatorError;
 /// Semi-honest evaluator.
 pub struct Evaluator<C, RNG, OT> {
     evaluator: Ev<C>,
-    channel: C,
     pub ot: OT,
     rng: RNG,
-    pub garbler_wires : Vec<Wire>,
     pub gc_hash: Sha256,
-    pub output_wires : Vec<(Block, Block)>,
+    pub output_colors : Vec<u16>,
     pub output_vec: Vec<u16>,
     current_gate: usize,
-    current_output: usize
 }
 
 impl<C, RNG, OT> Evaluator<C, RNG, OT> {}
@@ -35,36 +33,32 @@ impl<C: AbstractChannel, RNG: CryptoRng + Rng, OT: OtReceiver<Msg = Block> + Sem
     /// Make a new `Evaluator`.
     pub fn new(mut channel: C, mut rng: RNG) -> Result<Self, TwopacError> {
         let ot = OT::init(&mut channel, &mut rng)?;
-        let evaluator = Ev::new(channel.clone());
-        let garbler_wires: Vec<Wire> = Vec::new();
-        let output_wires: Vec<(Block, Block)> = Vec::new();
+        let evaluator = Ev::new(channel);
+        let output_colors: Vec<u16> = Vec::new();
         let output_vec: Vec<u16> = Vec::new();
         let gc_hash = Sha256::new();
         Ok(Self {
             evaluator,
-            channel,
             ot,
             rng,
             gc_hash,
-            garbler_wires,
-            output_wires,
+            output_colors,
             output_vec,
-            current_output : 0,
             current_gate : 0
         })
     }
 
-
-
-    /// Get a reference to the internal channel.
-    pub fn get_channel(&mut self) -> &mut C {
-        &mut self.channel
-    }
-
     fn run_ot(&mut self, inputs: &[bool]) -> Result<Vec<Block>, TwopacError> {
         self.ot
-            .receive(&mut self.channel, &inputs, &mut self.rng)
+            .receive(self.evaluator.get_channel(), &inputs, &mut self.rng)
             .map_err(TwopacError::from)
+    }
+}
+
+impl<C: AbstractChannel, RNG, OT> Evaluator<C, RNG, OT> {
+    /// Get a reference to the internal channel.
+    pub fn get_channel(&mut self) -> &mut C {
+        self.evaluator.get_channel()
     }
 }
 
@@ -73,17 +67,20 @@ impl<C: AbstractChannel, RNG: CryptoRng + Rng, OT: OtReceiver<Msg = Block> + Sem
 {
     type Item = Wire;
     type Error = TwopacError;
+    type PartyId = PartyId;
 
     /// Receive a garbler input wire.
-    fn receive(&mut self, modulus: u16) -> Result<Wire, TwopacError> {
+    fn receive(&mut self, from: PartyId, modulus: u16) -> Result<Wire, TwopacError> {
+        assert!(from == PartyId::Garbler);
         let w = self.evaluator.read_wire(modulus)?;
         Ok(w)
     }
 
     /// Receive garbler input wires.
-    fn receive_many(&mut self, moduli: &[u16]) -> Result<Vec<Wire>, TwopacError> {
+    fn receive_many(&mut self, from: PartyId, moduli: &[u16]) -> Result<Vec<Wire>, TwopacError> {
+        assert!(from == PartyId::Garbler);
         //moduli.iter().map(|q| {self.garbler_wires.append(*q); self.receive(*q)} ).collect()
-        moduli.iter().map(|q| self.receive(*q)).collect()
+        moduli.iter().map(|q| self.receive(from, *q)).collect()
     }
 
     /// Perform OT and obtain wires for the evaluator's inputs.
@@ -153,7 +150,7 @@ impl<C: AbstractChannel, RNG, OT> Fancy for Evaluator<C, RNG, OT> {
         let mut gate = Vec::with_capacity(ngates);
         {
             for _ in 0..ngates {
-                let block = self.channel.read_block()?;
+                let block = self.get_channel().read_block()?;
                 self.gc_hash.update(block.as_ref());
                 gate.push(block);
             }
@@ -196,7 +193,7 @@ impl<C: AbstractChannel, RNG, OT> Fancy for Evaluator<C, RNG, OT> {
         let ngates = (x.modulus() - 1) as usize;
         let mut gate = Vec::with_capacity(ngates);
         for _ in 0..ngates {
-            let block = self.channel.read_block()?;
+            let block = self.get_channel().read_block()?;
             self.gc_hash.update(block.as_ref());
             gate.push(block);
         }
@@ -212,32 +209,12 @@ impl<C: AbstractChannel, RNG, OT> Fancy for Evaluator<C, RNG, OT> {
 
     fn output(&mut self, x: &Wire) -> Result<Option<u16>, Self::Error> {
         let q = x.modulus();
-        let i = self.current_output;
-        self.current_output += 1;
+        let c = self.get_channel().read_u16()?;
+        self.output_colors.push(c);
 
-        // Receive the output ciphertext from the garbler
-        let ct = self.channel.read_blocks(q as usize)?;
-
-        let mut temp : (Block, Block) = (Block::default(),Block::default());
-        temp.0 = ct[0];
-        temp.1 = ct[1];
-        self.output_wires.append(&mut vec![temp]);
-        // Attempt to brute force x using the output ciphertext
-        let mut decoded = None;
-        for k in 0..q {
-            let hashed_wire = x.hash(output_tweak(i, k));
-            if hashed_wire == ct[k as usize] {
-                decoded = Some(k);
-                self.output_vec.push(k);
-                break;
-            }
-        }
-
-        if let Some(output) = decoded {
-            Ok(Some(output))
-        } else {
-            Err(EvaluatorError::DecodingFailed)
-        }
+        let output = ((q as u32 + x.color() as u32 - c as u32) % q as u32) as u16;
+        self.output_vec.push(output);
+        Ok(Some(output))
     }
 }
 
