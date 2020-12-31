@@ -48,7 +48,7 @@ Disclaimer: This is research code, please do not use it in production.
 
 ## Environment setup:
 
-### MacOS and Ubuntue
+### MacOS and Ubuntu
 - Setup Rust programming language - [installation guide](https://doc.rust-lang.org/book/ch01-01-installation.html)
 
 - Clone this repository
